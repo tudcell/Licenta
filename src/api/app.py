@@ -64,7 +64,12 @@ def create_app(config: dict = None) -> Flask:
 
     os.environ.setdefault('WALLET_ENCRYPTION_KEY', app.config['JWT_SECRET_KEY'])
 
-    cors_origins = _parse_cors_origins(os.environ.get('CORS_ORIGINS', 'http://localhost:5000,http://127.0.0.1:5000'))
+    cors_origins = _parse_cors_origins(
+        os.environ.get(
+            'CORS_ORIGINS',
+            'http://localhost:5000,http://127.0.0.1:5000,http://localhost:5173,http://127.0.0.1:5173'
+        )
+    )
     CORS(app, resources={
         r"/api/*": {
             "origins": cors_origins,
@@ -152,12 +157,35 @@ def create_app(config: dict = None) -> Flask:
         logger.exception("Internal server error")
         return api_error("Internal server error", 500, error_code="INTERNAL_ERROR")
 
+    frontend_dist_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        'frontend',
+        'dist'
+    )
+
     @app.route('/')
     def index():
+        if os.path.exists(os.path.join(frontend_dist_dir, 'index.html')):
+            return send_from_directory(frontend_dist_dir, 'index.html')
         static_dir = os.path.join(os.path.dirname(__file__), 'static')
         if os.path.exists(os.path.join(static_dir, 'index.html')):
             return send_from_directory(static_dir, 'index.html')
         return api_error("Dashboard not found. Place files in src/api/static/", 404)
+
+    @app.route('/assets/<path:filename>')
+    def serve_frontend_assets(filename):
+        if os.path.exists(os.path.join(frontend_dist_dir, 'assets', filename)):
+            return send_from_directory(os.path.join(frontend_dist_dir, 'assets'), filename)
+        return api_error("Asset not found", 404, error_code="NOT_FOUND")
+
+    @app.route('/<path:filename>')
+    def serve_frontend_file(filename):
+        candidate = os.path.join(frontend_dist_dir, filename)
+        if os.path.exists(candidate) and os.path.isfile(candidate):
+            return send_from_directory(frontend_dist_dir, filename)
+        if os.path.exists(os.path.join(frontend_dist_dir, 'index.html')) and not filename.startswith('api/'):
+            return send_from_directory(frontend_dist_dir, 'index.html')
+        return api_error("Resource not found", 404, error_code="NOT_FOUND")
 
     @app.route('/static/<path:filename>')
     def serve_static(filename):

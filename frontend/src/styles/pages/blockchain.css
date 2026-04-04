@@ -1,0 +1,13 @@
+.page-blockchain .kpi-card {
+  border-left: 4px solid #0ea5e9;
+}
+
+.page-blockchain .quick-actions {
+  margin-bottom: 1rem;
+}
+
+.page-blockchain .data-table td:first-child a {
+  color: #0369a1;
+  font-weight: 600;
+}
+

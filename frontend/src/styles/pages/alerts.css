@@ -1,0 +1,18 @@
+.page-alerts .data-table td:nth-child(2) {
+  text-transform: capitalize;
+}
+
+.page-alerts .data-table td:nth-child(5) {
+  font-weight: 600;
+}
+
+.page-alerts .filters-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 920px) {
+  .page-alerts .filters-grid {
+    grid-template-columns: 1fr;
+  }
+}
+

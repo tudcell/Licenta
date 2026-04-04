@@ -1,0 +1,16 @@
+.page-dashboard .kpi-card {
+  border-left: 4px solid #3b82f6;
+}
+
+.page-dashboard .kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
+}
+
+.page-dashboard .two-col-grid section {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.8rem;
+}
+

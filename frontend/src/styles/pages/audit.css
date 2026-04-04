@@ -1,0 +1,12 @@
+.page-audit section + section {
+  margin-top: 1.5rem;
+}
+
+.page-audit .state-card {
+  border-left: 4px solid #ef4444;
+}
+
+.page-audit .quick-actions {
+  margin-top: 0.6rem;
+}
+

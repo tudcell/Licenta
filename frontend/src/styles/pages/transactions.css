@@ -1,0 +1,17 @@
+.page-transactions .filters-grid {
+  margin-top: 0.5rem;
+}
+
+.page-transactions textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.page-transactions .state-card {
+  border-left: 4px solid #1d4ed8;
+}
+
+.page-transactions .data-table td:first-child a {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
