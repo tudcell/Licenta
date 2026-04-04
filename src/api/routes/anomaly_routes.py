@@ -1,198 +1,206 @@
-"""
-Anomaly detection routes blueprint.
-Handles ML training, statistics, alerts, and demo data generation.
-"""
+"""Anomaly detection routes blueprint."""
+
+from __future__ import annotations
 
 import logging
-from flask import Blueprint, request, current_app
-from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from typing import Any, Dict, Tuple
 
-from ..responses import api_success, api_error, get_pagination_params
+from flask import Blueprint, request
+from flask_jwt_extended import get_jwt, get_jwt_identity, jwt_required
 
-logger = logging.getLogger('blockchain_audit')
+from ..app_context import get_app_ctx
+from ..rate_limit import rate_limit
+from ..responses import api_error, api_success, get_pagination_params
 
-anomaly_bp = Blueprint('anomaly', __name__, url_prefix='/api')
+logger = logging.getLogger("blockchain_audit")
+
+anomaly_bp = Blueprint("anomaly", __name__, url_prefix="/api")
 
 
-@anomaly_bp.route('/anomaly/train', methods=['POST'])
+ALLOWED_TRAINING_MODES = {"blockchain", "synthetic"}
+
+
+def _require_operator_or_admin() -> Tuple[bool, Any]:
+    claims = get_jwt()
+    if claims.get("role") not in ("admin", "operator"):
+        return False, api_error("Access forbidden. Required: admin, operator", 403, error_code="FORBIDDEN")
+    return True, None
+
+
+@anomaly_bp.route("/anomaly/train", methods=["POST"])
+@rate_limit(limit=10, window_seconds=60, scope='anomaly_train')
 @jwt_required()
 def train_detector():
-    """
-    Trains the anomaly detector.
+    """Train the anomaly detector using either clean blockchain data or synthetic normal data."""
+    app_ctx = get_app_ctx()
+    allowed, response = _require_operator_or_admin()
+    if not allowed:
+        return response
 
-    By default uses blockchain transactions.
-    Optionally send JSON body with:
-    - use_synthetic: true (generates synthetic training data)
-    - sample_count: number of samples (default 500, max 2000)
-
-    Requires admin or operator role.
-    """
-    claims = get_jwt()
-    if claims.get('role') not in ('admin', 'operator'):
-        return api_error("Access forbidden. Required: admin, operator", 403, error_code="FORBIDDEN")
+    payload: Dict[str, Any] = request.get_json(silent=True) or {}
+    mode = str(payload.get("mode") or ("synthetic" if payload.get("use_synthetic") else "blockchain")).lower()
+    if mode not in ALLOWED_TRAINING_MODES:
+        return api_error("Invalid training mode. Use 'blockchain' or 'synthetic'.", 400, error_code="INVALID_MODE")
 
     try:
-        # Check if synthetic training requested (optional JSON body)
-        data = request.get_json(silent=True) or {}
-        use_synthetic = data.get('use_synthetic', False)
-
-        if use_synthetic:
-            # Generate synthetic training data
+        if mode == "synthetic":
             from src.utils.training_data_generator import TrainingDataGenerator
 
-            sample_count = min(data.get('sample_count', 800), 5000)
-            logger.info("Generating %d synthetic training samples...", sample_count)
-
+            sample_count = max(100, min(int(payload.get("sample_count", 800)), 5000))
+            logger.info("Training detector with %s synthetic normal sample(s)", sample_count)
             generator = TrainingDataGenerator(num_users=20)
             transactions = generator.generate_only_normal(count=sample_count)
-            current_app.analyzer.detector.fit(transactions)
-            message = f"Detector trained with {sample_count} synthetic samples"
+            app_ctx.analyzer.detector.fit(transactions)
+            clean_count = len(transactions)
+            message = f"Detector trained with {clean_count} synthetic normal samples"
         else:
-            # Use blockchain transactions (original behavior)
-            transactions = current_app.blockchain.get_all_transactions()
-            min_samples = current_app.analyzer.min_training_samples
-
-            if len(transactions) < min_samples:
+            all_transactions = app_ctx.blockchain.get_all_transactions()
+            clean_transactions = app_ctx.analyzer._get_clean_training_transactions(all_transactions)
+            min_samples = app_ctx.analyzer.min_training_samples
+            if len(clean_transactions) < min_samples:
                 return api_error(
-                    f"At least {min_samples} transactions required (have {len(transactions)})",
-                    400, error_code="INSUFFICIENT_DATA"
+                    f"At least {min_samples} clean transactions required (have {len(clean_transactions)} clean out of {len(all_transactions)} total)",
+                    400,
+                    error_code="INSUFFICIENT_DATA",
                 )
+            app_ctx.analyzer.train_detector(all_transactions)
+            transactions = clean_transactions
+            clean_count = len(clean_transactions)
+            message = f"Detector trained with {clean_count} clean blockchain transactions"
 
-            current_app.analyzer.train_detector(transactions)
-            message = f"Detector trained with {len(transactions)} blockchain transactions"
-
-        # Save model to disk
-        current_app.analyzer.detector.save(current_app.ml_model_path)
-        logger.info("ML model saved to %s", current_app.ml_model_path)
+        app_ctx.analyzer.detector.save(app_ctx.ml_model_path)
+        logger.info("ML model saved to %s", app_ctx.ml_model_path)
 
         return api_success(
             data={
-                'training_samples': len(transactions),
-                'stats': current_app.analyzer.detector.training_stats,
-                'model_saved': current_app.ml_model_path,
-                'detector_fitted': current_app.analyzer.detector.is_fitted,
+                "training_mode": mode,
+                "training_samples": len(transactions),
+                "stats": app_ctx.analyzer.detector.training_stats,
+                "model_saved": app_ctx.ml_model_path,
+                "detector_fitted": app_ctx.analyzer.detector.is_fitted,
             },
-            message=message
+            message=message,
         )
-    except Exception as e:
+    except Exception as exc:  # noqa: BLE001
         logger.exception("Error training detector")
-        return api_error(f"Training error: {str(e)}", 500, error_code="TRAINING_ERROR")
+        return api_error(f"Training error: {exc}", 500, error_code="TRAINING_ERROR")
 
 
-@anomaly_bp.route('/anomaly/stats', methods=['GET'])
+@anomaly_bp.route("/anomaly/stats", methods=["GET"])
 @jwt_required()
 def get_anomaly_stats():
-    """Returns combined anomaly statistics (memory + SQLite)."""
-    analyzer_stats = current_app.analyzer.get_statistics()
-    db_alert_stats = current_app.metadata_store.get_alert_stats()
-
-    return api_success(data={
-        **analyzer_stats,
-        'persistent_alerts': db_alert_stats
-    })
+    app_ctx = get_app_ctx()
+    analyzer_stats = app_ctx.analyzer.get_statistics()
+    db_alert_stats = app_ctx.metadata_store.get_alert_stats()
+    return api_success(data={**analyzer_stats, "persistent_alerts": db_alert_stats})
 
 
-@anomaly_bp.route('/alerts', methods=['GET'])
+@anomaly_bp.route("/alerts", methods=["GET"])
 @jwt_required()
 def get_alerts():
-    """
-    Returns paginated anomaly alerts from SQLite.
-
-    Query params:
-        page, per_page: Pagination
-        severity: Filter (low, medium, high)
-        resolved: Filter (true/false)
-    """
+    app_ctx = get_app_ctx()
     page, per_page = get_pagination_params()
-    severity = request.args.get('severity')
-    resolved_param = request.args.get('resolved')
+    severity = request.args.get("severity")
+    resolved_param = request.args.get("resolved")
 
     is_resolved = None
     if resolved_param is not None:
-        is_resolved = resolved_param.lower() in ('true', '1', 'yes')
+        is_resolved = resolved_param.lower() in ("true", "1", "yes")
 
-    alerts, total = current_app.metadata_store.get_alerts(
-        page=page, per_page=per_page,
-        severity=severity, is_resolved=is_resolved
+    alerts, total = app_ctx.metadata_store.get_alerts(
+        page=page,
+        per_page=per_page,
+        severity=severity,
+        is_resolved=is_resolved,
     )
-
     pagination = {
-        'page': page, 'per_page': per_page,
-        'total': total,
-        'total_pages': max(1, (total + per_page - 1) // per_page),
-        'has_next': page * per_page < total,
-        'has_prev': page > 1,
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "total_pages": max(1, (total + per_page - 1) // per_page),
+        "has_next": page * per_page < total,
+        "has_prev": page > 1,
     }
-
-    return api_success(data={
-        'alerts': alerts,
-        'count': len(alerts)
-    }, pagination=pagination)
+    return api_success(data={"alerts": alerts, "count": len(alerts)}, pagination=pagination)
 
 
-@anomaly_bp.route('/alerts/<int:alert_id>/resolve', methods=['PUT'])
+@anomaly_bp.route("/alerts/<int:alert_id>/resolve", methods=["PUT"])
 @jwt_required()
-def resolve_alert(alert_id):
-    """Marks an alert as resolved."""
-    # Check role
-    claims = get_jwt()
-    if claims.get('role') not in ('admin', 'operator'):
-        return api_error("Access forbidden. Required: admin, operator", 403, error_code="FORBIDDEN")
+def resolve_alert(alert_id: int):
+    app_ctx = get_app_ctx()
+    allowed, response = _require_operator_or_admin()
+    if not allowed:
+        return response
 
-    resolved = current_app.metadata_store.resolve_alert(alert_id, get_jwt_identity())
+    resolved = app_ctx.metadata_store.resolve_alert(alert_id, get_jwt_identity())
     if resolved:
-        logger.info("Alert #%d resolved by %s", alert_id, get_jwt_identity())
+        logger.info("Alert #%s resolved by %s", alert_id, get_jwt_identity())
         return api_success(message=f"Alert #{alert_id} marked as resolved")
-    return api_error(f"Alert #{alert_id} not found or already resolved",
-                     404, error_code="ALERT_NOT_FOUND")
+    return api_error(f"Alert #{alert_id} not found or already resolved", 404, error_code="ALERT_NOT_FOUND")
 
 
-@anomaly_bp.route('/demo/generate', methods=['POST'])
+@anomaly_bp.route("/demo/generate", methods=["POST"])
 @jwt_required()
 def generate_demo_data():
-    """
-    Generates demonstration data.
-
-    Body JSON:
-        { "count": 50, "include_anomalies": true }
-    """
-    data = request.get_json() or {}
-    count = min(data.get('count', 50), 500)
-    include_anomalies = data.get('include_anomalies', True)
+    app_ctx = get_app_ctx()
+    payload = request.get_json(silent=True) or {}
+    count = max(1, min(int(payload.get("count", 50)), 500))
+    include_anomalies = bool(payload.get("include_anomalies", True))
+    anomaly_ratio = float(payload.get("anomaly_ratio", 0.10 if include_anomalies else 0.0))
 
     from src.utils.data_generator import DataGenerator
-    generator = DataGenerator(current_app.wallet_manager)
 
+    generator = DataGenerator(app_ctx.wallet_manager)
     transactions = generator.generate_normal_transactions(count)
+    labels = ["normal"] * len(transactions)
 
     if include_anomalies:
-        anomalies = generator.generate_anomalies(max(1, count // 10))
-        transactions.extend(anomalies)
+        anomaly_count = max(1, min(count // 2, int(round(count * anomaly_ratio))))
+        anomaly_transactions = generator.generate_anomalies(anomaly_count)
+        transactions.extend(anomaly_transactions)
+        labels.extend(["anomaly"] * len(anomaly_transactions))
+
+    combined = sorted(zip(transactions, labels), key=lambda item: item[0].timestamp)
 
     anomalies_detected = 0
-    quarantined_count = 0
-    for tx in transactions:
-        report = current_app.analyzer.add_transaction(tx)
+    flagged_count = 0
+    invalid_signature_count = 0
 
-        if not report.quarantined:
-            current_app.metadata_store.index_transaction(tx)
+    for tx, _label in combined:
+        report = app_ctx.analyzer.add_transaction(tx)
+        status = "REJECTED"
+        if report.signature_valid:
+            status = "FLAGGED" if report.flagged_for_review else "PENDING"
+        app_ctx.metadata_store.index_transaction(
+            tx,
+            block_index=None,
+            tx_status=status,
+            is_flagged=report.flagged_for_review,
+        )
 
         if report.is_suspicious:
             anomalies_detected += 1
-            current_app.metadata_store.save_alert(report)
-        if report.quarantined:
-            quarantined_count += 1
+            if report.flagged_for_review:
+                flagged_count += 1
+            if not report.signature_valid:
+                invalid_signature_count += 1
+            app_ctx.metadata_store.save_alert(report)
 
-    logger.info("Demo data: %d tx, %d anomalies, %d quarantined by %s",
-                 len(transactions), anomalies_detected, quarantined_count,
-                 get_jwt_identity())
+    logger.info(
+        "Demo data generated by %s: %s transaction(s), %s suspicious, %s flagged, %s invalid-signature",
+        get_jwt_identity(),
+        len(combined),
+        anomalies_detected,
+        flagged_count,
+        invalid_signature_count,
+    )
 
     return api_success(
         data={
-            'generated': len(transactions),
-            'anomalies_detected': anomalies_detected,
-            'quarantined': quarantined_count
+            "generated": len(combined),
+            "anomalies_detected": anomalies_detected,
+            "flagged": flagged_count,
+            "invalid_signatures": invalid_signature_count,
         },
-        message=f"{len(transactions)} transactions generated ({quarantined_count} quarantined)"
+        message=f"{len(combined)} transactions generated ({flagged_count} flagged for review)",
     )
-

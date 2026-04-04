@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.api.app import create_app
 
-app = create_app()
+app = create_app({'SNAPSHOT_RETENTION_COUNT': 3})
 
 with app.test_client() as client:
     print("=" * 60)
@@ -80,7 +80,15 @@ with app.test_client() as client:
     }, headers=headers)
     assert r.status_code == 201
     assert r.get_json()['data']['analysis'] is not None
+    created_tx_id = r.get_json()['data']['transaction']['transaction_id']
     print("[OK] 8. Create transaction with analysis")
+
+    # 8b. Transaction details endpoint should return either proof data or indexed record
+    r = client.get(f'/api/transaction/{created_tx_id}', headers=headers)
+    assert r.status_code == 200
+    detail = r.get_json()['data']
+    assert 'index_record' in detail or 'proof' in detail
+    print("[OK] 8b. Transaction detail/proof endpoint")
 
     # 9. Transactions paginated
     r = client.get('/api/transactions?page=1&per_page=5', headers=headers)
@@ -119,6 +127,15 @@ with app.test_client() as client:
     assert r.status_code == 201
     print("[OK] 13. Register user (admin only)")
 
+    # 13a. Admin assignment to unknown user should fail (prevents orphan wallets)
+    r = client.post('/api/wallet', json={
+        'name': f"ghost_wallet_{uuid4().hex[:6]}",
+        'assign_to_user': f"missing_user_{uuid4().hex[:6]}"
+    }, headers=headers)
+    assert r.status_code == 404
+    assert r.get_json()['error']['code'] == 'USER_NOT_FOUND'
+    print("[OK] 13a. Wallet assign to missing user rejected")
+
     # 13b. Train detector with synthetic data and verify stats are updated
     r = client.post('/api/anomaly/train', json={'use_synthetic': True, 'sample_count': 120}, headers=headers)
     assert r.status_code == 200
@@ -146,6 +163,49 @@ with app.test_client() as client:
     assert r.get_json()['data']['chain_valid'] == True
     print("[OK] 16. Integrity check")
 
+    # 16b. Create runtime snapshot backup (admin)
+    r = client.post('/api/audit/backup', headers=headers)
+    assert r.status_code == 201
+    backup_name = r.get_json()['data']['snapshot_name']
+    assert backup_name.endswith('.zip')
+    print("[OK] 16b. Snapshot backup creation")
+
+    # 16c. List snapshots should include newly created backup
+    r = client.get('/api/audit/backups', headers=headers)
+    assert r.status_code == 200
+    backups = r.get_json()['data']['snapshots']
+    assert any(item['name'] == backup_name for item in backups)
+    print("[OK] 16c. Snapshot listing")
+
+    # 16c2. Download created snapshot archive
+    r = client.get(f'/api/audit/backups/{backup_name}/download', headers=headers)
+    assert r.status_code == 200
+    assert r.headers.get('Content-Type', '').startswith('application/zip')
+    assert backup_name in (r.headers.get('Content-Disposition', ''))
+    print("[OK] 16c2. Snapshot download")
+
+    # 16d. Restore with unknown snapshot should return not found
+    r = client.post('/api/audit/restore', json={'snapshot_name': 'snapshot_missing.zip'}, headers=headers)
+    assert r.status_code == 404
+    assert r.get_json()['error']['code'] == 'SNAPSHOT_NOT_FOUND'
+    print("[OK] 16d. Snapshot restore validation")
+
+    # 16e. Backup endpoint rate limiting should trigger HTTP 429
+    rate_limited = False
+    for _ in range(6):
+        resp = client.post('/api/audit/backup', headers=headers)
+        if resp.status_code == 429:
+            rate_limited = True
+            break
+    assert rate_limited
+    print("[OK] 16e. Backup endpoint rate limit")
+
+    # 16f. Retention should prune snapshots to configured cap
+    r = client.get('/api/audit/backups', headers=headers)
+    kept_backups = r.get_json()['data']['snapshots']
+    assert len(kept_backups) <= 3
+    print("[OK] 16f. Snapshot retention cap")
+
     # 17. Refresh token
     r = client.post('/api/auth/refresh', headers={'Authorization': f'Bearer {refresh}'})
     assert r.status_code == 200
@@ -172,7 +232,7 @@ with app.test_client() as client:
 
     print()
     print("=" * 60)
-    print("  ALL 20 TESTS PASSED!")
+    print("  ALL TESTS PASSED!")
     print("=" * 60)
     print()
     print("Features verified:")

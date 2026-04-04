@@ -298,6 +298,15 @@
                 <div class="pagination" id="tx-pagination"></div>
             </div>
 
+            <!-- Mempool Card -->
+            <div class="card">
+                <h2>📥 Mempool</h2>
+                <div class="list" id="mempool-list">
+                    <div class="list-item">Se încarcă...</div>
+                </div>
+                <div class="pagination" id="mempool-pagination"></div>
+            </div>
+
             <!-- Alerts Card -->
             <div class="card">
                 <h2>🚨 Alerte Anomalii</h2>
@@ -338,7 +347,7 @@
         let socket = null;
 
         // Pagination state
-        let txPage = 1, alertPage = 1, blockPage = 1;
+        let txPage = 1, alertPage = 1, blockPage = 1, mempoolPage = 1;
 
         // ==================== AUTH ====================
 
@@ -350,6 +359,15 @@
                 'Content-Type': 'application/json',
                 'Authorization': accessToken ? `Bearer ${accessToken}` : ''
             };
+        }
+
+        function clearAuthState() {
+            accessToken = null;
+            refreshToken = null;
+            currentUser = null;
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('current_user');
         }
 
         /**
@@ -374,12 +392,14 @@
                     const data = await refreshResult.json();
                     accessToken = data.data.access_token;
                     localStorage.setItem('access_token', accessToken);
+                    if (socket) connectWebSocket();
 
                     // Retry cererea originală
                     options.headers['Authorization'] = `Bearer ${accessToken}`;
                     response = await fetch(API + url, options);
                 } else {
                     // Refresh eșuat - redirect la login
+                    clearAuthState();
                     showLogin();
                     throw new Error('Session expired');
                 }
@@ -433,12 +453,7 @@
                 await authFetch('/api/auth/logout', { method: 'POST' });
             } catch (e) { /* ignore */ }
 
-            accessToken = null;
-            refreshToken = null;
-            currentUser = null;
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('refresh_token');
-            localStorage.removeItem('current_user');
+            clearAuthState();
 
             if (socket) socket.disconnect();
             showLogin();
@@ -482,6 +497,13 @@
             socket.on('disconnect', () => {
                 document.getElementById('ws-indicator').className = 'ws-indicator disconnected';
                 document.getElementById('ws-status').textContent = 'Deconectat';
+            });
+
+            socket.on('connect_error', (err) => {
+                document.getElementById('ws-indicator').className = 'ws-indicator disconnected';
+                document.getElementById('ws-status').textContent = 'Auth failed';
+                const reason = err?.message || 'WebSocket connection rejected';
+                log(`WebSocket error: ${reason}`, 'error');
             });
 
             // Alertă nouă de anomalie în timp real
@@ -560,7 +582,7 @@
                 document.getElementById('block-count').textContent = stats.height;
                 document.getElementById('tx-count').textContent = stats.total_transactions;
                 document.getElementById('stat-height').textContent = stats.height;
-                document.getElementById('stat-mempool').textContent = stats.mempool_size;
+                document.getElementById('stat-mempool').textContent = stats.pending_transactions;
                 document.getElementById('stat-detector').textContent = detectorTrained ? '✓' : '❌';
 
                 const alertCount = stats.alerts?.total_alerts || anomalyStats.analysis.alerts_count || 0;
@@ -568,6 +590,7 @@
                 document.getElementById('stat-anomalies').textContent = alertCount;
 
                 loadTransactions();
+                loadMempool();
                 loadAlerts();
                 loadBlocks();
             } catch (e) {
@@ -595,6 +618,27 @@
                 `).join('') || '<div class="list-item">Nicio tranzacție</div>';
 
                 renderPagination('tx-pagination', result.pagination, 'loadTransactions');
+            } catch (e) { /* ignore session expired */ }
+        }
+
+        async function loadMempool(page) {
+            if (page) mempoolPage = page;
+            try {
+                const res = await authFetch(`/api/mempool?page=${mempoolPage}&per_page=10`);
+                const result = await res.json();
+                const data = result.data;
+                const list = document.getElementById('mempool-list');
+
+                list.innerHTML = (data.transactions || []).map(tx => `
+                    <div class="list-item">
+                        <strong>${tx.transaction_type}</strong> |
+                        ${tx.sender_address.substring(0, 16)}... |
+                        ${new Date(tx.timestamp).toLocaleTimeString()}
+                        <br><small style="color:#666">TX: ${tx.transaction_id.substring(0, 20)}...</small>
+                    </div>
+                `).join('') || '<div class="list-item">Mempool gol</div>';
+
+                renderPagination('mempool-pagination', result.pagination, 'loadMempool');
             } catch (e) { /* ignore session expired */ }
         }
 
@@ -785,14 +829,30 @@
 
         // ==================== INIT ====================
 
-        // Verifică dacă avem token salvat și încercăm auto-login
-        if (accessToken) {
+        async function initializeApp() {
+            if (!accessToken) {
+                showLogin();
+                return;
+            }
+
             hideLogin();
             connectWebSocket();
-            refreshStats();
-        } else {
-            showLogin();
+
+            try {
+                const probe = await authFetch('/api/blockchain/stats');
+                if (!probe.ok) {
+                    clearAuthState();
+                    showLogin();
+                    return;
+                }
+                refreshStats();
+            } catch (e) {
+                clearAuthState();
+                showLogin();
+            }
         }
+
+        initializeApp();
 
         // Enter key pe formularul de login
         document.getElementById('login-password').addEventListener('keypress', (e) => {

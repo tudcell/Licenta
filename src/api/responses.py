@@ -37,7 +37,7 @@ def api_success(data: Any = None, message: str = None, status_code: int = 200,
 
 
 def api_error(message: str, status_code: int = 400, errors: list = None,
-              error_code: str = None) -> Tuple:
+              error_code: str = None, data: Any = None) -> Tuple:
     """
     Creates a standardized error API response.
 
@@ -46,6 +46,7 @@ def api_error(message: str, status_code: int = 400, errors: list = None,
         status_code: HTTP error code (default 400)
         errors: List of detailed errors (optional)
         error_code: Internal error code (optional)
+        data: Additional payload useful for troubleshooting (optional)
 
     Returns:
         Tuple (response, status_code)
@@ -62,6 +63,8 @@ def api_error(message: str, status_code: int = 400, errors: list = None,
         response['error']['details'] = errors
     if error_code:
         response['error']['code'] = error_code
+    if data is not None:
+        response['data'] = data
     return jsonify(response), status_code
 
 

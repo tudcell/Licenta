@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 
 from flask import Flask, send_from_directory, request
 from flask_cors import CORS
-from flask_socketio import emit, disconnect
+from flask_socketio import emit
 from flask_jwt_extended import decode_token
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -77,7 +77,7 @@ def create_app(config: dict = None) -> Flask:
     })
 
     jwt.init_app(app)
-    socketio.init_app(app, cors_allowed_origins=cors_origins, async_mode='threading', always_connect=True)
+    socketio.init_app(app, cors_allowed_origins=cors_origins, async_mode='threading')
 
     data_dir = os.environ.get('DATA_DIR', 'data')
     os.makedirs(data_dir, exist_ok=True)
@@ -91,6 +91,7 @@ def create_app(config: dict = None) -> Flask:
     app.blockchain = Blockchain(blockchain_config)
     app.wallet_manager = WalletManager(os.path.join(data_dir, 'wallets'))
     app.analyzer = TransactionAnalyzer(blockchain=app.blockchain, auto_train=False, min_training_samples=30)
+    app.snapshot_retention_count = max(1, int(os.environ.get('SNAPSHOT_RETENTION_COUNT', app.config.get('SNAPSHOT_RETENTION_COUNT', 20))))
 
     app.ml_model_path = os.environ.get('ML_MODEL_PATH', os.path.join(data_dir, 'ml_model.pkl'))
     if os.path.exists(app.ml_model_path):
@@ -184,16 +185,12 @@ def create_app(config: dict = None) -> Flask:
         token = _get_socket_token(auth)
         if not token:
             logger.warning('Rejected WebSocket client without token')
-            emit('connect_error', {'message': 'Authentication token required'})
-            disconnect()
-            return
+            raise ConnectionRefusedError('Authentication token required')
         try:
             decoded = decode_token(token)
         except Exception:
             logger.warning('Rejected WebSocket client with invalid token')
-            emit('connect_error', {'message': 'Invalid authentication token'})
-            disconnect()
-            return
+            raise ConnectionRefusedError('Invalid authentication token')
         logger.info("WebSocket client connected: %s", decoded.get('sub'))
         emit('connected', {
             'message': 'Connected to alerts stream',
