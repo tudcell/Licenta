@@ -96,6 +96,7 @@ class TransactionAnalyzer:
         self.alerts: List[AuditReport] = []
         self.analysis_count = 0
         self._historical_transactions: List[Transaction] = []
+        self._reports_by_transaction_id: Dict[str, AuditReport] = {}
 
     def _is_clean_training_candidate(self, transaction: Transaction) -> bool:
         if not transaction.verify_signature():
@@ -170,6 +171,8 @@ class TransactionAnalyzer:
         if report.is_suspicious:
             self.alerts.append(report)
 
+        self._reports_by_transaction_id[transaction.transaction_id] = report
+
         return report
 
     def train_detector(self, transactions: List[Transaction] = None):
@@ -210,9 +213,10 @@ class TransactionAnalyzer:
                 existing_alert.merkle_proof_valid = merkle_valid
                 existing_alert.blockchain_valid = True
                 existing_alert.added_to_mempool = False
+                self._reports_by_transaction_id[tx.transaction_id] = existing_alert
                 results.append(existing_alert)
             else:
-                results.append(AuditReport(
+                mined_report = AuditReport(
                     transaction_id=tx.transaction_id,
                     blockchain_valid=True,
                     signature_valid=tx.verify_signature(),
@@ -221,7 +225,9 @@ class TransactionAnalyzer:
                     merkle_proof_valid=merkle_valid,
                     flagged_for_review=False,
                     added_to_mempool=False
-                ))
+                )
+                self._reports_by_transaction_id[tx.transaction_id] = mined_report
+                results.append(mined_report)
 
         return {
             'block': new_block.to_dict(),
@@ -233,6 +239,10 @@ class TransactionAnalyzer:
         """
         Analyzes an existing transaction in the blockchain.
         """
+        cached_report = self._reports_by_transaction_id.get(transaction_id)
+        if cached_report:
+            return cached_report
+
         result = self.blockchain.get_transaction(transaction_id)
         if not result:
             return None
@@ -256,7 +266,7 @@ class TransactionAnalyzer:
             anomaly_result = self.detector.predict(tx, historical)
             flagged_for_review = bool(anomaly_result.is_anomaly)
 
-        return AuditReport(
+        report = AuditReport(
             transaction_id=transaction_id,
             blockchain_valid=blockchain_valid,
             signature_valid=signature_valid,
@@ -266,6 +276,8 @@ class TransactionAnalyzer:
             flagged_for_review=flagged_for_review,
             added_to_mempool=False
         )
+        self._reports_by_transaction_id[transaction_id] = report
+        return report
 
     def get_alerts(
         self,
