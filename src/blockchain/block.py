@@ -18,7 +18,7 @@ class Block:
     """
     Represents a block in the blockchain.
 
-    Block structure:
+    Block structure
     - Header: contains metadata and cryptographic links
     - Body: contains the list of transactions
 
