@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 
@@ -33,12 +33,76 @@ const TRANSACTION_TYPES = [
   "CUSTOM",
 ];
 
-function safeParseJson(input: string): Record<string, unknown> {
-  const parsed = JSON.parse(input);
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("JSON must represent an object.");
+type TransactionFieldDefinition = {
+  name: string;
+  label: string;
+  inputType?: "text" | "number";
+  placeholder?: string;
+};
+
+type TransactionTemplate = {
+  fields: TransactionFieldDefinition[];
+  defaults: Record<string, string>;
+  metadata: Record<string, unknown>;
+};
+
+function getTemplateByType(transactionType: string): TransactionTemplate {
+  switch (transactionType) {
+    case "TRANSFER":
+      return {
+        fields: [
+          { name: "recipient", label: "Recipient wallet", placeholder: "wallet_bob" },
+          { name: "amount", label: "Amount", inputType: "number", placeholder: "1000" },
+          { name: "currency", label: "Currency", placeholder: "RON" },
+        ],
+        defaults: { recipient: "", amount: "1000", currency: "RON" },
+        metadata: { category: "financial", source: "ui_demo" },
+      };
+    case "LOGIN":
+    case "LOGIN_FAILED":
+      return {
+        fields: [
+          { name: "user_id", label: "User ID", placeholder: "alice" },
+          { name: "ip_address", label: "IP address", placeholder: "127.0.0.1" },
+          { name: "user_agent", label: "User agent", placeholder: "Mozilla/5.0" },
+        ],
+        defaults: { user_id: "", ip_address: "127.0.0.1", user_agent: "BrowserDemo/1.0" },
+        metadata: { category: "authentication", source: "ui_demo" },
+      };
+    case "DATA_READ":
+    case "DATA_WRITE":
+    case "DATA_DELETE":
+    case "DATA_MODIFY":
+      return {
+        fields: [
+          { name: "user_id", label: "User ID", placeholder: "alice" },
+          { name: "resource_id", label: "Resource", placeholder: "patient_123" },
+          { name: "action", label: "Action", placeholder: "read/write/delete/modify" },
+        ],
+        defaults: { user_id: "", resource_id: "", action: transactionType.replace("DATA_", "").toLowerCase() },
+        metadata: { category: "data_access", source: "ui_demo" },
+      };
+    case "ACCESS_GRANTED":
+    case "ACCESS_DENIED":
+      return {
+        fields: [
+          { name: "user_id", label: "User ID", placeholder: "alice" },
+          { name: "resource_id", label: "Resource", placeholder: "secure_area_1" },
+          { name: "reason", label: "Reason", placeholder: "Role check" },
+        ],
+        defaults: { user_id: "", resource_id: "", reason: "" },
+        metadata: { category: "access_control", source: "ui_demo" },
+      };
+    default:
+      return {
+        fields: [
+          { name: "event", label: "Event description", placeholder: "What happened?" },
+          { name: "details", label: "Details", placeholder: "Extra context" },
+        ],
+        defaults: { event: "", details: "" },
+        metadata: { category: "generic", source: "ui_demo" },
+      };
   }
-  return parsed as Record<string, unknown>;
 }
 
 export function TransactionsPage() {
@@ -55,8 +119,8 @@ export function TransactionsPage() {
 
   const [walletName, setWalletName] = useState("");
   const [txType, setTxType] = useState("LOGIN");
-  const [dataJson, setDataJson] = useState('{"ip_address":"127.0.0.1"}');
-  const [metadataJson, setMetadataJson] = useState("");
+  const [templateValues, setTemplateValues] = useState<Record<string, string>>(() => getTemplateByType("LOGIN").defaults);
+  const [showCreateDrawer, setShowCreateDrawer] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitResult, setSubmitResult] = useState<CreateTransactionResult | null>(null);
@@ -125,6 +189,49 @@ export function TransactionsPage() {
     void loadTransactions(1);
   }, [loadTransactions]);
 
+  const selectedTemplate = useMemo(() => getTemplateByType(txType), [txType]);
+
+  useEffect(() => {
+    setTemplateValues(selectedTemplate.defaults);
+  }, [selectedTemplate]);
+
+  const updateTemplateValue = (name: string, value: string) => {
+    setTemplateValues((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  };
+
+  const buildTransactionData = () => {
+    const data = selectedTemplate.fields.reduce<Record<string, unknown>>((acc, field) => {
+      const raw = (templateValues[field.name] ?? "").trim();
+      if (!raw.length) {
+        return acc;
+      }
+      if (field.inputType === "number") {
+        acc[field.name] = Number(raw);
+        return acc;
+      }
+      acc[field.name] = raw;
+      return acc;
+    }, {});
+
+    if (txType === "LOGIN" || txType === "LOGIN_FAILED") {
+      data.success = txType === "LOGIN";
+    }
+    if (txType === "ACCESS_GRANTED" || txType === "ACCESS_DENIED") {
+      data.success = txType === "ACCESS_GRANTED";
+    }
+    if (txType.startsWith("DATA_")) {
+      data.success = true;
+    }
+
+    return data;
+  };
+
+  const dataPreview = useMemo(() => JSON.stringify(buildTransactionData(), null, 2), [templateValues, txType]);
+  const metadataPreview = useMemo(() => JSON.stringify(selectedTemplate.metadata, null, 2), [selectedTemplate]);
+
   const onCreateTransaction = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitError(null);
@@ -132,14 +239,20 @@ export function TransactionsPage() {
     setSubmitLoading(true);
 
     try {
-      const data = safeParseJson(dataJson);
-      const metadata = metadataJson.trim() ? safeParseJson(metadataJson) : undefined;
+      const data = buildTransactionData();
+      const missingRequired = selectedTemplate.fields.some((field) => {
+        const value = (templateValues[field.name] ?? "").trim();
+        return !value.length;
+      });
+      if (missingRequired) {
+        throw new Error("Please complete all required fields for this transaction type.");
+      }
 
       const created = await transactionsService.create({
         wallet_name: walletName.trim() || undefined,
         transaction_type: txType,
         data,
-        metadata,
+        metadata: selectedTemplate.metadata,
       });
 
       setSubmitResult(created);
@@ -147,6 +260,7 @@ export function TransactionsPage() {
         ...previous,
         [created.analysis.transaction_id]: created.analysis,
       }));
+      setShowCreateDrawer(false);
       await loadTransactions(1);
     } catch (createError) {
       setSubmitError(normalizeApiError(createError).message);
@@ -163,35 +277,72 @@ export function TransactionsPage() {
 
       <section>
         <h2>Simulation</h2>
-        <form className="form" onSubmit={onCreateTransaction}>
-          <label className="field">
-            <span>Wallet name (optional)</span>
-            <input value={walletName} onChange={(event) => setWalletName(event.target.value)} placeholder="admin" />
-          </label>
+        <button className="btn btn-primary" type="button" onClick={() => setShowCreateDrawer(true)}>
+          Add transaction
+        </button>
 
-          <label className="field">
-            <span>Transaction type</span>
-            <select value={txType} onChange={(event) => setTxType(event.target.value)}>
-              {TRANSACTION_TYPES.map((type) => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </select>
-          </label>
+        <div
+          className={`transaction-drawer-backdrop ${showCreateDrawer ? "is-open" : ""}`}
+          onClick={() => setShowCreateDrawer(false)}
+        >
+          <div
+            className={`transaction-drawer ${showCreateDrawer ? "is-open" : ""}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="transaction-drawer-header">
+              <h3>Create transaction</h3>
+              <button className="btn btn-secondary" type="button" onClick={() => setShowCreateDrawer(false)}>
+                Close
+              </button>
+            </div>
 
-          <label className="field">
-            <span>Data JSON</span>
-            <textarea rows={4} value={dataJson} onChange={(event) => setDataJson(event.target.value)} />
-          </label>
+            <form className="form" onSubmit={onCreateTransaction}>
+              <label className="field">
+                <span>Wallet name (optional)</span>
+                <input value={walletName} onChange={(event) => setWalletName(event.target.value)} placeholder="admin" />
+              </label>
 
-          <label className="field">
-            <span>Metadata JSON (optional)</span>
-            <textarea rows={3} value={metadataJson} onChange={(event) => setMetadataJson(event.target.value)} />
-          </label>
+              <label className="field">
+                <span>Transaction type</span>
+                <select value={txType} onChange={(event) => setTxType(event.target.value)}>
+                  {TRANSACTION_TYPES.map((type) => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+              </label>
 
-          <button className="btn btn-primary" type="submit" disabled={submitLoading}>
-            {submitLoading ? "Submitting..." : "Submit transaction"}
-          </button>
-        </form>
+              <div className="template-grid">
+                {selectedTemplate.fields.map((field) => (
+                  <label key={field.name} className="field">
+                    <span>{field.label}</span>
+                    <input
+                      type={field.inputType ?? "text"}
+                      value={templateValues[field.name] ?? ""}
+                      placeholder={field.placeholder}
+                      onChange={(event) => updateTemplateValue(field.name, event.target.value)}
+                      required
+                    />
+                  </label>
+                ))}
+              </div>
+
+              <div className="template-preview-grid">
+                <label className="field">
+                  <span>Transaction payload preview</span>
+                  <pre className="json-block">{dataPreview}</pre>
+                </label>
+                <label className="field">
+                  <span>Auto metadata preview</span>
+                  <pre className="json-block">{metadataPreview}</pre>
+                </label>
+              </div>
+
+              <button className="btn btn-primary" type="submit" disabled={submitLoading}>
+                {submitLoading ? "Submitting..." : "Submit transaction"}
+              </button>
+            </form>
+          </div>
+        </div>
 
         {submitError ? <ErrorState title="Create transaction failed" message={submitError} /> : null}
         {submitResult ? (
@@ -307,4 +458,3 @@ export function TransactionsPage() {
     </section>
   );
 }
-
