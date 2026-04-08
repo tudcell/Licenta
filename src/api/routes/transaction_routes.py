@@ -4,7 +4,6 @@ Handles transaction creation, viewing, and analysis.
 """
 
 import logging
-from datetime import datetime, timezone
 from flask import Blueprint, request
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
@@ -12,7 +11,8 @@ from ..app_context import get_app_ctx
 from ..rate_limit import rate_limit
 from ..responses import api_success, api_error, get_pagination_params
 from ..extensions import socketio
-from src.blockchain.transaction import TransactionType
+from src.domain.entities.transaction import TransactionType
+from src.service.exceptions import ServiceError
 
 logger = logging.getLogger('blockchain_audit')
 
@@ -64,8 +64,8 @@ def get_transactions():
 @jwt_required()
 def get_transaction(transaction_id):
     app_ctx = get_app_ctx()
-    proof = app_ctx.blockchain.verify_transaction_proof(transaction_id)
-    index_record = app_ctx.metadata_store.get_transaction_index(transaction_id)
+    proof = app_ctx.blockchain_repository.verify_transaction_proof(transaction_id)
+    index_record = app_ctx.metadata_repository.get_transaction_index(transaction_id)
 
     if proof:
         payload = dict(proof)
@@ -111,119 +111,38 @@ def create_transaction():
 
     username = get_jwt_identity()
     claims = get_jwt()
-    user = app_ctx.metadata_store.get_user(username)
-    if not user:
-        return api_error("Authenticated user not found", 401, error_code="AUTH_FAILED")
-
-    requested_wallet_name = data.get('wallet_name') or user.get('wallet_name') or username
-    user_role = claims.get('role', user.get('role', 'viewer'))
-
-    if user.get('wallet_name') and requested_wallet_name != user['wallet_name'] and user_role != 'admin':
-        return api_error("Wallet does not belong to the authenticated user", 403, error_code="WALLET_FORBIDDEN")
-
-    wallet = app_ctx.wallet_manager.get_wallet(requested_wallet_name)
-    if wallet is None:
-        wallet = app_ctx.wallet_manager.create_wallet(
-            requested_wallet_name,
-            metadata={'owner': username}
+    try:
+        result = app_ctx.transaction_service.create_transaction(
+            username=username,
+            user_role=claims.get('role', 'viewer'),
+            transaction_type=tx_type,
+            transaction_data=data['data'],
+            wallet_name=data.get('wallet_name'),
+            metadata=data.get('metadata'),
         )
+    except ServiceError as exc:
+        return api_error(exc.message, exc.status_code, errors=exc.errors, error_code=exc.error_code, data=exc.data)
 
-    if not user.get('wallet_name'):
-        app_ctx.metadata_store.assign_wallet_to_user(username, requested_wallet_name)
-        user['wallet_name'] = requested_wallet_name
-
-    tx_metadata: dict[str, object] = dict(data.get('metadata', {}))
-    tx_metadata.setdefault('submitted_by', username)
-    tx_metadata.setdefault('flagged', False)
-
-    tx = wallet.create_and_sign_transaction(
-        transaction_type=tx_type,
-        data=data['data'],
-        metadata=tx_metadata
-    )
-
-    report = app_ctx.analyzer.add_transaction(tx)
-
-    if not report.signature_valid:
-        app_ctx.metadata_store.index_transaction(
-            tx,
-            tx_status='REJECTED',
-            is_flagged=True
-        )
-        app_ctx.metadata_store.save_alert(report)
-
-        return api_error(
-            "Transaction signature is invalid",
-            400,
-            data={
-                'transaction': tx.to_dict(),
-                'analysis': report.to_dict()
-            },
-            error_code="INVALID_SIGNATURE"
-        )
-
-    if not report.added_to_mempool:
-        # This is the key mempool fix:
-        # do NOT mark it as pending if the blockchain rejected it.
-        # Most likely causes: duplicate transaction ID or duplicate submission.
-        app_ctx.metadata_store.index_transaction(
-            tx,
-            tx_status='REJECTED',
-            is_flagged=report.is_suspicious
-        )
-
-        if report.is_suspicious:
-            app_ctx.metadata_store.save_alert(report)
-
-        return api_error(
-            "Transaction was not added to the mempool",
-            409,
-            data={
-                'transaction': tx.to_dict(),
-                'analysis': report.to_dict()
-            },
-            error_code="MEMPOOL_REJECTED"
-        )
-
-    tx_status = 'FLAGGED' if report.flagged_for_review else 'PENDING'
-    app_ctx.metadata_store.index_transaction(
-        tx,
-        tx_status=tx_status,
-        is_flagged=report.flagged_for_review
-    )
-
-    if report.is_suspicious:
-        alert_id = app_ctx.metadata_store.save_alert(report)
-        socketio.emit('anomaly_detected', {
-            'alert_id': alert_id,
-            'transaction_id': tx.transaction_id,
-            'status': report.overall_status,
-            'explanation': report.anomaly_result.explanation if report.anomaly_result else None,
-            'score': float(report.anomaly_result.anomaly_score) if report.anomaly_result else None,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }, namespace='/alerts')
+    if result.alert_event_payload:
+        socketio.emit('anomaly_detected', result.alert_event_payload, namespace='/alerts')
 
         logger.warning(
             "Suspicious transaction flagged and added to mempool: tx=%s status=%s",
-            tx.transaction_id[:16],
-            report.overall_status
+            str(result.data['transaction']['transaction_id'])[:16],
+            result.data['analysis']['overall_status']
         )
 
-    return api_success(
-        data={
-            'transaction': tx.to_dict(),
-            'analysis': report.to_dict()
-        },
-        message="Transaction created successfully",
-        status_code=201
-    )
+    if not result.success:
+        return api_error(result.message, result.status_code, data=result.data, error_code=result.error_code)
+
+    return api_success(data=result.data, message=result.message, status_code=result.status_code)
 
 
 @transaction_bp.route('/transaction/analyze/<transaction_id>', methods=['GET'])
 @jwt_required()
 def analyze_transaction(transaction_id):
     app_ctx = get_app_ctx()
-    report = app_ctx.analyzer.analyze_transaction(transaction_id)
+    report = app_ctx.analyzer_repository.analyze_transaction(transaction_id)
     if report:
         return api_success(data=report.to_dict())
     return api_error("Transaction not found", 404, error_code="TX_NOT_FOUND")

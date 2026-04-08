@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 
-from src.blockchain.transaction import Transaction, TransactionType
+from src.domain.entities.transaction import Transaction, TransactionType
 
 
 @dataclass
@@ -329,3 +329,4 @@ class FeatureExtractor:
             'risk_level_encoded': 'Risk level encoded from low to critical.',
             'is_failed_attempt': 'Whether the event is a failed login/access attempt.',
         }
+

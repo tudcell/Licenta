@@ -8,7 +8,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Optional, Tuple
 
-from src.blockchain.transaction import Transaction
+from src.domain.entities.transaction import Transaction
 
 logger = logging.getLogger('blockchain_audit')
 
@@ -43,6 +43,8 @@ class MetadataStore:
                     amount REAL DEFAULT 0,
                     tx_status TEXT DEFAULT 'PENDING',
                     is_flagged INTEGER DEFAULT 0,
+                    ml_score REAL,
+                    ml_reason TEXT,
                     timestamp TEXT NOT NULL,
                     created_at TEXT DEFAULT (datetime('now'))
                 );
@@ -97,20 +99,32 @@ class MetadataStore:
                 conn.execute("ALTER TABLE transaction_index ADD COLUMN tx_status TEXT DEFAULT 'PENDING'")
             if not self._column_exists(conn, 'transaction_index', 'is_flagged'):
                 conn.execute("ALTER TABLE transaction_index ADD COLUMN is_flagged INTEGER DEFAULT 0")
+            if not self._column_exists(conn, 'transaction_index', 'ml_score'):
+                conn.execute("ALTER TABLE transaction_index ADD COLUMN ml_score REAL")
+            if not self._column_exists(conn, 'transaction_index', 'ml_reason'):
+                conn.execute("ALTER TABLE transaction_index ADD COLUMN ml_reason TEXT")
 
             conn.commit()
             logger.info("SQLite metadata store initialized: %s", self.db_path)
         finally:
             conn.close()
 
-    def index_transaction(self, tx: Transaction, block_index: int = None, tx_status: str = 'PENDING', is_flagged: bool = False):
+    def index_transaction(
+        self,
+        tx: Transaction,
+        block_index: int = None,
+        tx_status: str = 'PENDING',
+        is_flagged: bool = False,
+        ml_score: float = None,
+        ml_reason: str = None,
+    ):
         conn = self._get_connection()
         try:
             amount = float(tx.data.get('amount', 0)) if tx.data else 0
             conn.execute('''
                 INSERT OR REPLACE INTO transaction_index
-                    (transaction_id, block_index, sender_address, transaction_type, amount, tx_status, is_flagged, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (transaction_id, block_index, sender_address, transaction_type, amount, tx_status, is_flagged, ml_score, ml_reason, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 tx.transaction_id,
                 block_index,
@@ -119,6 +133,8 @@ class MetadataStore:
                 amount,
                 tx_status,
                 1 if is_flagged else 0,
+                ml_score,
+                ml_reason,
                 tx.timestamp
             ))
             conn.commit()

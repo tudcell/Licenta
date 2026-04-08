@@ -212,3 +212,4 @@ class DigitalSignature:
         except Exception as e:
             print(f"Error verifying with hex key: {e}")
             return False
+

@@ -7,8 +7,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple, Optional
 
 
-from src.blockchain.transaction import Transaction, TransactionType, TransactionFactory
-from src.blockchain.wallet import WalletManager, Wallet
+from src.domain.entities.transaction import Transaction, TransactionType, TransactionFactory
+from src.domain.entities.wallet import WalletManager, Wallet
 
 
 @dataclass
@@ -479,7 +479,7 @@ def train_detector_with_quality_data(detector: 'AnomalyDetector', normal_count: 
 
 
 if __name__ == '__main__':
-    from src.ml.anomaly_detector import AnomalyDetector
+    from src.domain.ml.anomaly_detector import AnomalyDetector
 
     print('=' * 60)
     print('Training Anomaly Detector with Quality Data')

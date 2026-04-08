@@ -14,3 +14,16 @@
   padding: 0.8rem;
 }
 
+.page-dashboard .dashboard-controls {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.page-dashboard .dashboard-action-message {
+  color: #065f46;
+  margin: 0.5rem 0;
+}
+

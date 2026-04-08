@@ -8,6 +8,8 @@ export interface IndexedTransaction {
   amount: number;
   tx_status: string;
   is_flagged: number;
+  ml_score: number | null;
+  ml_reason: string | null;
   timestamp: string;
   created_at: string;
 }

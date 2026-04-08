@@ -10,8 +10,8 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
-from src.blockchain.transaction import Transaction
-from src.ml.feature_extractor import FeatureExtractor, TransactionFeatures
+from src.domain.entities.transaction import Transaction
+from src.domain.ml.feature_extractor import FeatureExtractor, TransactionFeatures
 
 
 @dataclass
@@ -378,3 +378,5 @@ class AnomalyDetector:
     def __str__(self) -> str:
         status = 'trained' if self.is_fitted else 'untrained'
         return f"AnomalyDetector({status}, contamination={self.contamination})"
+
+

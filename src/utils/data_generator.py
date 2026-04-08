@@ -6,8 +6,8 @@ import random
 from datetime import timedelta
 from typing import List, Optional, Tuple
 
-from src.blockchain.transaction import Transaction, TransactionFactory
-from src.blockchain.wallet import Wallet, WalletManager
+from src.domain.entities.transaction import Transaction, TransactionFactory
+from src.domain.entities.wallet import Wallet, WalletManager
 from src.utils.training_data_generator import TrainingDataGenerator
 
 

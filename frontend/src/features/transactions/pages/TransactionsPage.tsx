@@ -124,7 +124,6 @@ export function TransactionsPage() {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitResult, setSubmitResult] = useState<CreateTransactionResult | null>(null);
-  const [analysisById, setAnalysisById] = useState<Record<string, CreateTransactionResult["analysis"]>>({});
 
   const buildFilters = useCallback((): TransactionFilters => {
     const filters: TransactionFilters = {};
@@ -158,26 +157,6 @@ export function TransactionsPage() {
       setListData(result.data);
       setPagination(result.pagination);
       setPage(result.pagination.page);
-
-      const analysisEntries = await Promise.all(
-        result.data.transactions.map(async (tx) => {
-          try {
-            const analysis = await transactionsService.analyze(tx.transaction_id);
-            return [tx.transaction_id, analysis] as const;
-          } catch {
-            return [tx.transaction_id, null] as const;
-          }
-        }),
-      );
-
-      const mapped = analysisEntries.reduce<Record<string, CreateTransactionResult["analysis"]>>((acc, entry) => {
-        if (entry[1]) {
-          acc[entry[0]] = entry[1];
-        }
-        return acc;
-      }, {});
-
-      setAnalysisById((previous) => ({ ...previous, ...mapped }));
     } catch (loadError) {
       setError(normalizeApiError(loadError).message);
     } finally {
@@ -256,10 +235,6 @@ export function TransactionsPage() {
       });
 
       setSubmitResult(created);
-      setAnalysisById((previous) => ({
-        ...previous,
-        [created.analysis.transaction_id]: created.analysis,
-      }));
       setShowCreateDrawer(false);
       await loadTransactions(1);
     } catch (createError) {
@@ -403,15 +378,8 @@ export function TransactionsPage() {
               </thead>
               <tbody>
                 {rows.map((row) => {
-                  const analysis = analysisById[row.transaction_id];
-                  const mlScore = analysis?.anomaly_result ? analysis.anomaly_result.anomaly_score.toFixed(4) : "-";
-                  const mlReason = analysis?.anomaly_result?.explanation
-                    ? analysis.anomaly_result.explanation
-                    : analysis
-                      ? (analysis.flagged_for_review
-                        ? "Flagged by model"
-                        : "No anomaly detected or detector not trained")
-                      : "-";
+                  const mlScore = typeof row.ml_score === "number" ? row.ml_score.toFixed(4) : "-";
+                  const mlReason = row.ml_reason ?? "No anomaly detected or detector not trained";
 
                   return (
                   <tr key={row.transaction_id}>

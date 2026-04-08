@@ -228,3 +228,4 @@ class MerkleTree:
     def __str__(self) -> str:
         return f"MerkleTree(transactions={len(self.transactions)}, root={self.get_root_hash()[:16]}...)"
 
+

@@ -16,9 +16,21 @@ from flask_jwt_extended import decode_token
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.blockchain.blockchain import Blockchain, BlockchainConfig
-from src.blockchain.wallet import WalletManager
-from src.ml.transaction_analyzer import TransactionAnalyzer
+from src.domain.entities.blockchain import Blockchain, BlockchainConfig
+from src.domain.entities.wallet import WalletManager
+from src.service.transaction_analyzer import TransactionAnalyzer
+from src.repository.analyzer_repository import AnalyzerRepository
+from src.repository.blockchain_repository import BlockchainRepository
+from src.repository.metadata_repository import MetadataRepository
+from src.repository.model_repository import ModelRepository
+from src.repository.snapshot_repository import SnapshotRepository
+from src.repository.wallet_repository import WalletRepository
+from src.service.anomaly_service import AnomalyService
+from src.service.auth_service import AuthService
+from src.service.audit_service import AuditService
+from src.service.blockchain_service import BlockchainService
+from src.service.transaction_service import TransactionService
+from src.service.wallet_service import WalletService
 
 from .extensions import jwt, socketio
 from .database import MetadataStore
@@ -96,18 +108,35 @@ def create_app(config: dict = None) -> Flask:
     app.blockchain = Blockchain(blockchain_config)
     app.wallet_manager = WalletManager(os.path.join(data_dir, 'wallets'))
     app.analyzer = TransactionAnalyzer(blockchain=app.blockchain, auto_train=False, min_training_samples=30)
+    app.model_repository = ModelRepository()
+    app.snapshot_repository = SnapshotRepository()
     app.snapshot_retention_count = max(1, int(os.environ.get('SNAPSHOT_RETENTION_COUNT', app.config.get('SNAPSHOT_RETENTION_COUNT', 20))))
 
     app.ml_model_path = os.environ.get('ML_MODEL_PATH', os.path.join(data_dir, 'ml_model.pkl'))
     if os.path.exists(app.ml_model_path):
         try:
-            from src.ml.anomaly_detector import AnomalyDetector
-            app.analyzer.detector = AnomalyDetector.load(app.ml_model_path)
+            app.analyzer.detector = app.model_repository.load_detector(app.ml_model_path)
             logger.info("ML model loaded from %s", app.ml_model_path)
         except Exception as e:
             logger.warning("Could not load ML model: %s", e)
 
     app.metadata_store = MetadataStore(db_path=os.environ.get('METADATA_DB', os.path.join(data_dir, 'audit_metadata.db')))
+    app.blockchain_repository = BlockchainRepository(app.blockchain)
+    app.analyzer_repository = AnalyzerRepository(app.analyzer)
+    app.metadata_repository = MetadataRepository(app.metadata_store)
+    app.wallet_repository = WalletRepository(app.wallet_manager)
+    app.auth_service = AuthService(app.metadata_repository)
+    app.transaction_service = TransactionService(app.wallet_repository, app.metadata_repository, app.analyzer_repository)
+    app.wallet_service = WalletService(app.wallet_repository, app.metadata_repository)
+    app.blockchain_service = BlockchainService(app.blockchain_repository, app.analyzer_repository, app.metadata_repository)
+    app.anomaly_service = AnomalyService(
+        analyzer_repository=app.analyzer_repository,
+        blockchain_repository=app.blockchain_repository,
+        metadata_repository=app.metadata_repository,
+        wallet_repository=app.wallet_repository,
+        model_repository=app.model_repository,
+    )
+    app.audit_service = AuditService(app.analyzer_repository, app.snapshot_repository)
 
     for block in app.blockchain:
         for tx in block.transactions:
@@ -126,7 +155,7 @@ def create_app(config: dict = None) -> Flask:
 
     @jwt.token_in_blocklist_loader
     def check_if_token_revoked(jwt_header, jwt_payload):
-        return app.metadata_store.is_token_revoked(jwt_payload['jti'])
+        return app.metadata_repository.is_token_revoked(jwt_payload['jti'])
 
     @jwt.expired_token_loader
     def expired_token_callback(jwt_header, jwt_payload):

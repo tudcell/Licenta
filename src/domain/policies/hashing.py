@@ -134,3 +134,4 @@ class HashUtils:
             True if hash meets difficulty
         """
         return hash_value.startswith('0' * difficulty)
+
