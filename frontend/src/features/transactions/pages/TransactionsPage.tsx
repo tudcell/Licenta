@@ -33,54 +33,76 @@ const TRANSACTION_TYPES = [
   "CUSTOM",
 ];
 
-type KeyValueField = {
-  id: number;
-  key: string;
-  value: string;
+type TransactionFieldDefinition = {
+  name: string;
+  label: string;
+  inputType?: "text" | "number";
+  placeholder?: string;
 };
 
-const defaultDataFields: KeyValueField[] = [
-  { id: 1, key: "ip_address", value: "127.0.0.1" },
-];
+type TransactionTemplate = {
+  fields: TransactionFieldDefinition[];
+  defaults: Record<string, string>;
+  metadata: Record<string, unknown>;
+};
 
-const defaultMetadataFields: KeyValueField[] = [
-  { id: 1, key: "source", value: "ui_form" },
-];
-
-function parseFieldValue(rawValue: string): unknown {
-  const value = rawValue.trim();
-  if (!value.length) {
-    return "";
+function getTemplateByType(transactionType: string): TransactionTemplate {
+  switch (transactionType) {
+    case "TRANSFER":
+      return {
+        fields: [
+          { name: "recipient", label: "Recipient wallet", placeholder: "wallet_bob" },
+          { name: "amount", label: "Amount", inputType: "number", placeholder: "1000" },
+          { name: "currency", label: "Currency", placeholder: "RON" },
+        ],
+        defaults: { recipient: "", amount: "1000", currency: "RON" },
+        metadata: { category: "financial", source: "ui_demo" },
+      };
+    case "LOGIN":
+    case "LOGIN_FAILED":
+      return {
+        fields: [
+          { name: "user_id", label: "User ID", placeholder: "alice" },
+          { name: "ip_address", label: "IP address", placeholder: "127.0.0.1" },
+          { name: "user_agent", label: "User agent", placeholder: "Mozilla/5.0" },
+        ],
+        defaults: { user_id: "", ip_address: "127.0.0.1", user_agent: "BrowserDemo/1.0" },
+        metadata: { category: "authentication", source: "ui_demo" },
+      };
+    case "DATA_READ":
+    case "DATA_WRITE":
+    case "DATA_DELETE":
+    case "DATA_MODIFY":
+      return {
+        fields: [
+          { name: "user_id", label: "User ID", placeholder: "alice" },
+          { name: "resource_id", label: "Resource", placeholder: "patient_123" },
+          { name: "action", label: "Action", placeholder: "read/write/delete/modify" },
+        ],
+        defaults: { user_id: "", resource_id: "", action: transactionType.replace("DATA_", "").toLowerCase() },
+        metadata: { category: "data_access", source: "ui_demo" },
+      };
+    case "ACCESS_GRANTED":
+    case "ACCESS_DENIED":
+      return {
+        fields: [
+          { name: "user_id", label: "User ID", placeholder: "alice" },
+          { name: "resource_id", label: "Resource", placeholder: "secure_area_1" },
+          { name: "reason", label: "Reason", placeholder: "Role check" },
+        ],
+        defaults: { user_id: "", resource_id: "", reason: "" },
+        metadata: { category: "access_control", source: "ui_demo" },
+      };
+    default:
+      return {
+        fields: [
+          { name: "event", label: "Event description", placeholder: "What happened?" },
+          { name: "details", label: "Details", placeholder: "Extra context" },
+        ],
+        defaults: { event: "", details: "" },
+        metadata: { category: "generic", source: "ui_demo" },
+      };
   }
-
-  const lowered = value.toLowerCase();
-  if (lowered === "true") {
-    return true;
-  }
-  if (lowered === "false") {
-    return false;
-  }
-  if (lowered === "null") {
-    return null;
-  }
-
-  const numeric = Number(value);
-  if (!Number.isNaN(numeric) && value !== "") {
-    return numeric;
-  }
-
-  return value;
-}
-
-function fieldsToRecord(fields: KeyValueField[]): Record<string, unknown> {
-  return fields.reduce<Record<string, unknown>>((acc, field) => {
-    const key = field.key.trim();
-    if (!key.length) {
-      return acc;
-    }
-    acc[key] = parseFieldValue(field.value);
-    return acc;
-  }, {});
 }
 
 export function TransactionsPage() {
@@ -97,8 +119,7 @@ export function TransactionsPage() {
 
   const [walletName, setWalletName] = useState("");
   const [txType, setTxType] = useState("LOGIN");
-  const [dataFields, setDataFields] = useState<KeyValueField[]>(defaultDataFields);
-  const [metadataFields, setMetadataFields] = useState<KeyValueField[]>(defaultMetadataFields);
+  const [templateValues, setTemplateValues] = useState<Record<string, string>>(() => getTemplateByType("LOGIN").defaults);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitResult, setSubmitResult] = useState<CreateTransactionResult | null>(null);
@@ -167,42 +188,48 @@ export function TransactionsPage() {
     void loadTransactions(1);
   }, [loadTransactions]);
 
-  const dataPreview = useMemo(() => JSON.stringify(fieldsToRecord(dataFields), null, 2), [dataFields]);
-  const metadataPreview = useMemo(
-    () => JSON.stringify(fieldsToRecord(metadataFields), null, 2),
-    [metadataFields],
-  );
+  const selectedTemplate = useMemo(() => getTemplateByType(txType), [txType]);
 
-  const updateField = (
-    target: "data" | "metadata",
-    id: number,
-    fieldName: "key" | "value",
-    value: string,
-  ) => {
-    const updater = (field: KeyValueField): KeyValueField => (field.id === id ? { ...field, [fieldName]: value } : field);
-    if (target === "data") {
-      setDataFields((previous) => previous.map(updater));
-      return;
-    }
-    setMetadataFields((previous) => previous.map(updater));
+  useEffect(() => {
+    setTemplateValues(selectedTemplate.defaults);
+  }, [selectedTemplate]);
+
+  const updateTemplateValue = (name: string, value: string) => {
+    setTemplateValues((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
   };
 
-  const addField = (target: "data" | "metadata") => {
-    const newField: KeyValueField = { id: Date.now() + Math.floor(Math.random() * 10_000), key: "", value: "" };
-    if (target === "data") {
-      setDataFields((previous) => [...previous, newField]);
-      return;
+  const buildTransactionData = () => {
+    const data = selectedTemplate.fields.reduce<Record<string, unknown>>((acc, field) => {
+      const raw = (templateValues[field.name] ?? "").trim();
+      if (!raw.length) {
+        return acc;
+      }
+      if (field.inputType === "number") {
+        acc[field.name] = Number(raw);
+        return acc;
+      }
+      acc[field.name] = raw;
+      return acc;
+    }, {});
+
+    if (txType === "LOGIN" || txType === "LOGIN_FAILED") {
+      data.success = txType === "LOGIN";
     }
-    setMetadataFields((previous) => [...previous, newField]);
+    if (txType === "ACCESS_GRANTED" || txType === "ACCESS_DENIED") {
+      data.success = txType === "ACCESS_GRANTED";
+    }
+    if (txType.startsWith("DATA_")) {
+      data.success = true;
+    }
+
+    return data;
   };
 
-  const removeField = (target: "data" | "metadata", id: number) => {
-    if (target === "data") {
-      setDataFields((previous) => previous.filter((field) => field.id !== id));
-      return;
-    }
-    setMetadataFields((previous) => previous.filter((field) => field.id !== id));
-  };
+  const dataPreview = useMemo(() => JSON.stringify(buildTransactionData(), null, 2), [templateValues, txType]);
+  const metadataPreview = useMemo(() => JSON.stringify(selectedTemplate.metadata, null, 2), [selectedTemplate]);
 
   const onCreateTransaction = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -211,17 +238,20 @@ export function TransactionsPage() {
     setSubmitLoading(true);
 
     try {
-      const data = fieldsToRecord(dataFields);
-      if (Object.keys(data).length === 0) {
-        throw new Error("At least one data field is required.");
+      const data = buildTransactionData();
+      const missingRequired = selectedTemplate.fields.some((field) => {
+        const value = (templateValues[field.name] ?? "").trim();
+        return !value.length;
+      });
+      if (missingRequired) {
+        throw new Error("Please complete all required fields for this transaction type.");
       }
-      const metadata = fieldsToRecord(metadataFields);
 
       const created = await transactionsService.create({
         wallet_name: walletName.trim() || undefined,
         transaction_type: txType,
         data,
-        metadata: Object.keys(metadata).length ? metadata : undefined,
+        metadata: selectedTemplate.metadata,
       });
 
       setSubmitResult(created);
@@ -260,68 +290,31 @@ export function TransactionsPage() {
             </select>
           </label>
 
-          <label className="field">
-            <span>Data fields</span>
-            <div className="kv-fields">
-              {dataFields.map((field, index) => (
-                <div key={field.id} className="kv-row">
-                  <input
-                    value={field.key}
-                    onChange={(event) => updateField("data", field.id, "key", event.target.value)}
-                    placeholder={`Field name #${index + 1}`}
-                  />
-                  <input
-                    value={field.value}
-                    onChange={(event) => updateField("data", field.id, "value", event.target.value)}
-                    placeholder="Value"
-                  />
-                  <button
-                    className="btn btn-secondary"
-                    type="button"
-                    onClick={() => removeField("data", field.id)}
-                    disabled={dataFields.length === 1}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-            <button className="btn btn-secondary" type="button" onClick={() => addField("data")}>
-              Add data field
-            </button>
-            <pre className="json-block">{dataPreview}</pre>
-          </label>
+          <div className="template-grid">
+            {selectedTemplate.fields.map((field) => (
+              <label key={field.name} className="field">
+                <span>{field.label}</span>
+                <input
+                  type={field.inputType ?? "text"}
+                  value={templateValues[field.name] ?? ""}
+                  placeholder={field.placeholder}
+                  onChange={(event) => updateTemplateValue(field.name, event.target.value)}
+                  required
+                />
+              </label>
+            ))}
+          </div>
 
-          <label className="field">
-            <span>Metadata fields (optional)</span>
-            <div className="kv-fields">
-              {metadataFields.map((field, index) => (
-                <div key={field.id} className="kv-row">
-                  <input
-                    value={field.key}
-                    onChange={(event) => updateField("metadata", field.id, "key", event.target.value)}
-                    placeholder={`Metadata key #${index + 1}`}
-                  />
-                  <input
-                    value={field.value}
-                    onChange={(event) => updateField("metadata", field.id, "value", event.target.value)}
-                    placeholder="Value"
-                  />
-                  <button
-                    className="btn btn-secondary"
-                    type="button"
-                    onClick={() => removeField("metadata", field.id)}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-            <button className="btn btn-secondary" type="button" onClick={() => addField("metadata")}>
-              Add metadata field
-            </button>
-            <pre className="json-block">{metadataPreview}</pre>
-          </label>
+          <div className="template-preview-grid">
+            <label className="field">
+              <span>Transaction payload preview</span>
+              <pre className="json-block">{dataPreview}</pre>
+            </label>
+            <label className="field">
+              <span>Auto metadata preview</span>
+              <pre className="json-block">{metadataPreview}</pre>
+            </label>
+          </div>
 
           <button className="btn btn-primary" type="submit" disabled={submitLoading}>
             {submitLoading ? "Submitting..." : "Submit transaction"}
