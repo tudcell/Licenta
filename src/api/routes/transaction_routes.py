@@ -19,6 +19,93 @@ logger = logging.getLogger('blockchain_audit')
 transaction_bp = Blueprint('transactions', __name__, url_prefix='/api')
 
 
+def _validate_transaction_payload(tx_type: TransactionType, payload, username: str):
+    if not isinstance(payload, dict):
+        return None, [
+            {
+                'field': 'data',
+                'message': 'must be an object',
+            }
+        ]
+
+    validated = dict(payload)
+    errors = []
+
+    def _require_non_empty_str(field_name: str):
+        value = validated.get(field_name)
+        if not isinstance(value, str) or not value.strip():
+            errors.append({'field': f'data.{field_name}', 'message': 'required non-empty string'})
+
+    auth_types = {
+        TransactionType.LOGIN,
+        TransactionType.LOGIN_FAILED,
+        TransactionType.ACCESS_GRANTED,
+        TransactionType.ACCESS_DENIED,
+        TransactionType.LOGOUT,
+    }
+    data_types = {
+        TransactionType.DATA_READ,
+        TransactionType.DATA_WRITE,
+        TransactionType.DATA_DELETE,
+        TransactionType.DATA_MODIFY,
+    }
+    action_defaults = {
+        TransactionType.DATA_READ: 'read',
+        TransactionType.DATA_WRITE: 'write',
+        TransactionType.DATA_DELETE: 'delete',
+        TransactionType.DATA_MODIFY: 'modify',
+    }
+
+    if tx_type in auth_types:
+        validated.setdefault('user_id', username)
+
+    if tx_type in {TransactionType.LOGIN, TransactionType.LOGIN_FAILED}:
+        _require_non_empty_str('ip_address')
+        validated.setdefault('success', tx_type == TransactionType.LOGIN)
+
+    if tx_type in {TransactionType.ACCESS_GRANTED, TransactionType.ACCESS_DENIED}:
+        validated.setdefault('success', tx_type == TransactionType.ACCESS_GRANTED)
+
+    if tx_type == TransactionType.LOGOUT:
+        session_duration = validated.get('session_duration')
+        if session_duration is not None:
+            try:
+                parsed = int(session_duration)
+            except (TypeError, ValueError):
+                errors.append({'field': 'data.session_duration', 'message': 'must be an integer >= 0'})
+            else:
+                if parsed < 0:
+                    errors.append({'field': 'data.session_duration', 'message': 'must be an integer >= 0'})
+                else:
+                    validated['session_duration'] = parsed
+
+    if tx_type in data_types:
+        validated.setdefault('user_id', username)
+        _require_non_empty_str('resource_id')
+        validated.setdefault('action', action_defaults[tx_type])
+        success = validated.get('success')
+        if success is not None and not isinstance(success, bool):
+            errors.append({'field': 'data.success', 'message': 'must be boolean'})
+        if success is None:
+            validated['success'] = True
+
+    if tx_type == TransactionType.TRANSFER:
+        _require_non_empty_str('recipient')
+        amount = validated.get('amount')
+        try:
+            parsed_amount = float(amount)
+        except (TypeError, ValueError):
+            errors.append({'field': 'data.amount', 'message': 'required number > 0'})
+        else:
+            if parsed_amount <= 0:
+                errors.append({'field': 'data.amount', 'message': 'required number > 0'})
+            else:
+                validated['amount'] = parsed_amount
+        validated.setdefault('currency', 'RON')
+
+    return validated, errors
+
+
 @transaction_bp.route('/transactions', methods=['GET'])
 @jwt_required()
 def get_transactions():
@@ -109,14 +196,40 @@ def create_transaction():
             error_code="INVALID_TX_TYPE"
         )
 
+    if 'wallet_name' in data and data.get('wallet_name') is not None:
+        if not isinstance(data.get('wallet_name'), str) or not data.get('wallet_name').strip():
+            return api_error(
+                "Invalid wallet_name",
+                400,
+                errors=[{'field': 'wallet_name', 'message': 'must be a non-empty string'}],
+                error_code="VALIDATION_ERROR"
+            )
+
+    if 'metadata' in data and data.get('metadata') is not None and not isinstance(data.get('metadata'), dict):
+        return api_error(
+            "Invalid metadata",
+            400,
+            errors=[{'field': 'metadata', 'message': 'must be an object'}],
+            error_code="VALIDATION_ERROR"
+        )
+
     username = get_jwt_identity()
+    validated_payload, payload_errors = _validate_transaction_payload(tx_type, data.get('data'), username)
+    if payload_errors:
+        return api_error(
+            "Invalid transaction payload",
+            400,
+            errors=payload_errors,
+            error_code="VALIDATION_ERROR"
+        )
+
     claims = get_jwt()
     try:
         result = app_ctx.transaction_service.create_transaction(
             username=username,
             user_role=claims.get('role', 'viewer'),
             transaction_type=tx_type,
-            transaction_data=data['data'],
+            transaction_data=validated_payload,
             wallet_name=data.get('wallet_name'),
             metadata=data.get('metadata'),
         )

@@ -141,8 +141,7 @@ def create_app(config: dict = None) -> Flask:
     for block in app.blockchain:
         for tx in block.transactions:
             is_flagged = bool(tx.metadata.get('flagged'))
-            status = 'FLAGGED' if is_flagged else 'MINED'
-            app.metadata_store.index_transaction(tx, block.index, tx_status=status, is_flagged=is_flagged)
+            app.metadata_store.index_transaction(tx, block.index, tx_status='MINED', is_flagged=is_flagged)
     logger.info("Existing transactions indexed in SQLite")
 
     admin_pass = os.environ.get('ADMIN_PASSWORD')

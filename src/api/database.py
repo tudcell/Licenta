@@ -120,6 +120,15 @@ class MetadataStore:
     ):
         conn = self._get_connection()
         try:
+            existing = conn.execute(
+                "SELECT ml_score, ml_reason FROM transaction_index WHERE transaction_id = ?",
+                (tx.transaction_id,)
+            ).fetchone()
+            if ml_score is None and existing is not None:
+                ml_score = existing['ml_score']
+            if ml_reason is None and existing is not None:
+                ml_reason = existing['ml_reason']
+
             amount = float(tx.data.get('amount', 0)) if tx.data else 0
             conn.execute('''
                 INSERT OR REPLACE INTO transaction_index

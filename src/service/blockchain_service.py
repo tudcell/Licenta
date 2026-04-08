@@ -95,7 +95,7 @@ class BlockchainService:
                 self.metadata_repository.update_transaction_state(
                     tx.transaction_id,
                     block_index=new_block.index,
-                    tx_status="FLAGGED" if is_flagged else "MINED",
+                    tx_status="MINED",
                     is_flagged=is_flagged,
                 )
 

@@ -83,6 +83,29 @@ with app.test_client() as client:
     created_tx_id = r.get_json()['data']['transaction']['transaction_id']
     print("[OK] 8. Create transaction with analysis")
 
+    # 8a. Per-type payload validation: invalid transfer should be rejected
+    r = client.post('/api/transaction', json={
+        'wallet_name': 'test_api_wallet',
+        'transaction_type': 'TRANSFER',
+        'data': {'recipient': 'bob'}
+    }, headers=headers)
+    assert r.status_code == 400
+    transfer_error = r.get_json()['error']
+    assert transfer_error['code'] == 'VALIDATION_ERROR'
+    assert any(item.get('field') == 'data.amount' for item in transfer_error.get('details', []))
+    print("[OK] 8a. Transfer payload validation (amount required)")
+
+    # 8a2. Per-type defaults: transfer currency defaults to RON when omitted
+    r = client.post('/api/transaction', json={
+        'wallet_name': 'test_api_wallet',
+        'transaction_type': 'TRANSFER',
+        'data': {'recipient': 'bob', 'amount': 50}
+    }, headers=headers)
+    assert r.status_code == 201
+    transfer_tx = r.get_json()['data']['transaction']
+    assert transfer_tx['data']['currency'] == 'RON'
+    print("[OK] 8a2. Transfer currency default applied")
+
     # 8b. Transaction details endpoint should return either proof data or indexed record
     r = client.get(f'/api/transaction/{created_tx_id}', headers=headers)
     assert r.status_code == 200
@@ -152,6 +175,24 @@ with app.test_client() as client:
     assert r.status_code == 200
     assert 'pagination' in r.get_json()
     print("[OK] 14. Paginated mempool")
+
+    # 14b. Mine a flagged transaction and ensure the indexed status becomes MINED
+    getattr(app, 'metadata_repository').update_transaction_state(
+        created_tx_id,
+        tx_status='FLAGGED',
+        is_flagged=True,
+    )
+
+    r = client.post('/api/mine', headers=headers)
+    assert r.status_code == 200
+
+    r = client.get(f'/api/transaction/{created_tx_id}', headers=headers)
+    assert r.status_code == 200
+    mined_detail = r.get_json()['data']['index_record']
+    assert mined_detail['tx_status'] == 'MINED'
+    assert mined_detail['is_flagged'] == 1
+    assert mined_detail['block_index'] is not None
+    print("[OK] 14b. Flagged transaction remains flagged but is marked MINED after mining")
 
     # 15. Validate blockchain
     r = client.get('/api/blockchain/validate', headers=headers)

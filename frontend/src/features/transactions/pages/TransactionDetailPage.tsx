@@ -6,8 +6,7 @@ import { EmptyState } from "../../../components/states/EmptyState";
 import { ErrorState } from "../../../components/states/ErrorState";
 import { LoadingState } from "../../../components/states/LoadingState";
 import { alertsService, normalizeApiError, transactionsService } from "../../../services";
-import type { AlertRecord } from "../../../types/alerts";
-import type { TransactionAuditReport, TransactionDetailPayload } from "../../../types/transactions";
+import type { AlertRecord, TransactionAuditReport, TransactionDetailPayload } from "../../../types";
 import "../../../styles/pages/transaction-detail.css";
 
 interface DetailData {
@@ -64,6 +63,12 @@ export function TransactionDetailPage() {
     void load();
   }, [load]);
 
+  const indexedRecord = data?.detail.index_record ?? null;
+  const liveMlResult = data?.analysis?.anomaly_result ?? null;
+  const persistedMlScore = indexedRecord?.ml_score ?? null;
+  const persistedMlReason = indexedRecord?.ml_reason ?? null;
+  const hasPersistedMl = persistedMlScore !== null || persistedMlReason !== null;
+
   if (loading) {
     return <LoadingState message="Loading transaction detail..." />;
   }
@@ -88,6 +93,8 @@ export function TransactionDetailPage() {
           <p>Status: {data.detail.index_record.tx_status}</p>
           <p>Sender: {data.detail.index_record.sender_address}</p>
           <p>Amount: {data.detail.index_record.amount}</p>
+          <p>ML score: {typeof data.detail.index_record.ml_score === "number" ? data.detail.index_record.ml_score.toFixed(4) : "-"}</p>
+          <p>ML reason: {data.detail.index_record.ml_reason || "No persisted ML reason recorded."}</p>
           <p>Timestamp: {new Date(data.detail.index_record.timestamp).toLocaleString()}</p>
         </div>
       ) : null}
@@ -109,25 +116,52 @@ export function TransactionDetailPage() {
             <p>Merkle proof valid: {data.analysis.merkle_proof_valid ? "Yes" : "No"}</p>
 
             <h4>ML insights</h4>
-            {data.analysis.anomaly_result ? (
+            {liveMlResult ? (
               <>
-                <p>Score: {data.analysis.anomaly_result.anomaly_score.toFixed(4)}</p>
-                <p>Threshold: {data.analysis.anomaly_result.threshold.toFixed(4)}</p>
+                <p>Source: Live analyzer output</p>
+                <p>Score: {liveMlResult.anomaly_score.toFixed(4)}</p>
+                <p>Threshold: {liveMlResult.threshold.toFixed(4)}</p>
                 <p>
-                  Confidence: {typeof data.analysis.anomaly_result.confidence === "number"
-                    ? data.analysis.anomaly_result.confidence.toFixed(4)
+                  Confidence: {typeof liveMlResult.confidence === "number"
+                    ? liveMlResult.confidence.toFixed(4)
                     : "-"}
                 </p>
-                <p>Reason: {data.analysis.anomaly_result.explanation || "No model explanation available."}</p>
+                <p>Reason: {liveMlResult.explanation || "No model explanation available."}</p>
+              </>
+            ) : hasPersistedMl ? (
+              <>
+                <p>Source: Persisted indexed ML data</p>
+                <p>Score: {typeof persistedMlScore === "number" ? persistedMlScore.toFixed(4) : "-"}</p>
+                <p>Reason: {persistedMlReason || "No model explanation available."}</p>
+                <p className="muted-text">The detector may be offline or the transaction was never re-analyzed after restart, but the saved ML result is still available.</p>
               </>
             ) : (
-              <p>No ML anomaly payload. Detector may be untrained.</p>
+              <p>No persisted ML anomaly payload is available for this transaction yet.</p>
             )}
 
             <p>
               Flagged decision: {data.analysis.flagged_for_review
                 ? "Flagged because model considered this transaction anomalous."
                 : "Not flagged because model considered this transaction within normal behavior."}
+            </p>
+          </>
+        ) : hasPersistedMl ? (
+          <>
+            <p>Overall status: {indexedRecord?.tx_status ?? "UNKNOWN"}</p>
+            <p>Suspicious: {indexedRecord?.is_flagged ? "Yes" : "No"}</p>
+            <p>Signature valid: Yes</p>
+            <p>Merkle proof valid: Yes</p>
+
+            <h4>ML insights</h4>
+            <p>Source: Persisted indexed ML data</p>
+            <p>Score: {typeof persistedMlScore === "number" ? persistedMlScore.toFixed(4) : "-"}</p>
+            <p>Reason: {persistedMlReason || "No model explanation available."}</p>
+            <p className="muted-text">The transaction was indexed with ML data, but live analyzer output was not available after reload.</p>
+
+            <p>
+              Flagged decision: {indexedRecord?.is_flagged
+                ? "Flagged because the stored index marks this transaction for review."
+                : "Not flagged based on the stored index record."}
             </p>
           </>
         ) : data.alertInsight ? (
