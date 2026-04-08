@@ -1,7 +1,4 @@
-"""
-Wallet routes blueprint.
-Handles wallet creation and viewing.
-"""
+"""Wallet controller routes."""
 
 import logging
 from flask import Blueprint, request
@@ -22,12 +19,8 @@ def get_wallets():
     page, per_page = get_pagination_params()
     claims = get_jwt()
     username = get_jwt_identity()
-    user = app_ctx.metadata_store.get_user(username)
 
-    wallets = app_ctx.wallet_manager.list_wallets()
-    if claims.get('role') != 'admin' and user and user.get('wallet_name'):
-        wallets = [wallet for wallet in wallets if wallet['name'] == user['wallet_name']]
-
+    wallets = app_ctx.wallet_service.list_wallets_for_user(username=username, role=claims.get('role', 'viewer'))
     paginated, pagination = paginate(wallets, page, per_page)
     return api_success(data={'wallets': paginated, 'count': len(paginated)}, pagination=pagination)
 
@@ -46,28 +39,26 @@ def create_wallet():
 
     username = get_jwt_identity()
     claims = get_jwt()
-    user = app_ctx.metadata_store.get_user(username)
-    if not user:
-        return api_error("Authenticated user not found", 401, error_code="AUTH_FAILED")
-
     requested_owner = data.get('assign_to_user') or username
-    if claims.get('role') != 'admin' and requested_owner != username:
-        return api_error("Only admins can assign wallets to other users", 403, error_code="FORBIDDEN")
-
-    owner_user = app_ctx.metadata_store.get_user(requested_owner)
-    if not owner_user:
-        return api_error(f"User '{requested_owner}' not found", 404, error_code="USER_NOT_FOUND")
-
-    if claims.get('role') != 'admin' and user.get('wallet_name') and user['wallet_name'] != name:
-        return api_error("User already has an assigned wallet", 409, error_code="WALLET_ALREADY_ASSIGNED")
 
     try:
-        wallet = app_ctx.wallet_manager.create_wallet(name, {'owner': requested_owner})
+        wallet, error = app_ctx.wallet_service.create_wallet(
+            name=name,
+            requested_owner=requested_owner,
+            created_by=username,
+            creator_role=claims.get('role', 'viewer')
+        )
     except ValueError as e:
-        return api_error(str(e), 409, error_code="WALLET_EXISTS")
+        return api_error(str(e), 409, error_code='WALLET_EXISTS')
 
-    if not app_ctx.metadata_store.assign_wallet_to_user(requested_owner, name):
-        return api_error(f"Could not assign wallet to user '{requested_owner}'", 404, error_code="USER_NOT_FOUND")
+    if error == 'AUTH_FAILED':
+        return api_error("Authenticated user not found", 401, error_code="AUTH_FAILED")
+    if error == 'FORBIDDEN':
+        return api_error("Only admins can assign wallets to other users", 403, error_code="FORBIDDEN")
+    if error == 'USER_NOT_FOUND':
+        return api_error(f"User '{requested_owner}' not found", 404, error_code="USER_NOT_FOUND")
+    if error == 'WALLET_ALREADY_ASSIGNED':
+        return api_error("User already has an assigned wallet", 409, error_code="WALLET_ALREADY_ASSIGNED")
 
     logger.info("Wallet created: %s assigned_to=%s by=%s", name, requested_owner, username)
     return api_success(
@@ -81,18 +72,18 @@ def create_wallet():
 @jwt_required()
 def get_wallet(name):
     app_ctx = get_app_ctx()
-    wallet = app_ctx.wallet_manager.get_wallet(name)
-    if not wallet:
-        return api_error(f"Wallet '{name}' not found", 404, error_code="WALLET_NOT_FOUND")
-
     username = get_jwt_identity()
     claims = get_jwt()
-    user = app_ctx.metadata_store.get_user(username)
-    if claims.get('role') != 'admin' and user and user.get('wallet_name') != name:
-        return api_error("Access forbidden to this wallet", 403, error_code="FORBIDDEN")
+    detail, status = app_ctx.wallet_service.get_wallet_details(name, username, claims.get('role', 'viewer'))
+    if status != 200:
+        if detail['error'] == 'WALLET_NOT_FOUND':
+            return api_error(f"Wallet '{name}' not found", 404, error_code='WALLET_NOT_FOUND')
+        return api_error("Access forbidden to this wallet", 403, error_code='FORBIDDEN')
 
     page, per_page = get_pagination_params()
-    indexed_txs, total = app_ctx.metadata_store.search_transactions(sender=wallet.address, page=page, per_page=per_page)
+    indexed_txs, total = app_ctx.metadata_repository.search_transactions(
+        sender=detail['wallet']['address'], page=page, per_page=per_page
+    )
     pagination = {
         'page': page,
         'per_page': per_page,
@@ -104,7 +95,7 @@ def get_wallet(name):
 
     return api_success(
         data={
-            'wallet': wallet.to_dict(include_private_key=False),
+            'wallet': detail['wallet'],
             'transactions': indexed_txs,
             'transaction_count': total
         },

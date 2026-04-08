@@ -16,9 +16,16 @@ from flask_jwt_extended import decode_token
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.blockchain.blockchain import Blockchain, BlockchainConfig
-from src.blockchain.wallet import WalletManager
-from src.ml.transaction_analyzer import TransactionAnalyzer
+from src.domain import Blockchain, BlockchainConfig, WalletManager, TransactionAnalyzer
+from src.repository import BlockchainRepository, MetadataRepository, ModelRepository, WalletRepository
+from src.service import (
+    AnomalyService,
+    AuditService,
+    AuthService,
+    BlockchainService,
+    TransactionService,
+    WalletService,
+)
 
 from .extensions import jwt, socketio
 from .database import MetadataStore
@@ -107,26 +114,37 @@ def create_app(config: dict = None) -> Flask:
         except Exception as e:
             logger.warning("Could not load ML model: %s", e)
 
-    app.metadata_store = MetadataStore(db_path=os.environ.get('METADATA_DB', os.path.join(data_dir, 'audit_metadata.db')))
+    metadata_store = MetadataStore(db_path=os.environ.get('METADATA_DB', os.path.join(data_dir, 'audit_metadata.db')))
+    app.blockchain_repository = BlockchainRepository(app.blockchain)
+    app.wallet_repository = WalletRepository(app.wallet_manager)
+    app.metadata_repository = MetadataRepository(metadata_store)
+    app.model_repository = ModelRepository(app.ml_model_path)
+
+    app.auth_service = AuthService(app.metadata_repository)
+    app.wallet_service = WalletService(app.wallet_repository, app.metadata_repository)
+    app.transaction_service = TransactionService(app.wallet_repository, app.metadata_repository, app.analyzer)
+    app.blockchain_service = BlockchainService(app.blockchain_repository, app.metadata_repository, app.analyzer)
+    app.anomaly_service = AnomalyService(app.blockchain_repository, app.wallet_repository, app.metadata_repository, app.model_repository, app.analyzer)
+    app.audit_service = AuditService(app.blockchain_repository, app.wallet_repository, app.metadata_repository, app.analyzer, app.ml_model_path, app.snapshot_retention_count)
 
     for block in app.blockchain:
         for tx in block.transactions:
             is_flagged = bool(tx.metadata.get('flagged'))
             status = 'FLAGGED' if is_flagged else 'MINED'
-            app.metadata_store.index_transaction(tx, block.index, tx_status=status, is_flagged=is_flagged)
+            app.metadata_repository.index_transaction(tx, block.index, tx_status=status, is_flagged=is_flagged)
     logger.info("Existing transactions indexed in SQLite")
 
     admin_pass = os.environ.get('ADMIN_PASSWORD')
-    if not app.metadata_store.get_user('admin'):
+    if not app.metadata_repository.get_user('admin'):
         if is_production and (not admin_pass or admin_pass == 'admin123'):
             raise RuntimeError('Set a strong ADMIN_PASSWORD before starting in production')
         admin_pass = admin_pass or 'admin123'
-        app.metadata_store.create_user(username='admin', password_hash=hash_password(admin_pass), role='admin')
+        app.metadata_repository.create_user(username='admin', password_hash=hash_password(admin_pass), role='admin')
         logger.info("Admin user created")
 
     @jwt.token_in_blocklist_loader
     def check_if_token_revoked(jwt_header, jwt_payload):
-        return app.metadata_store.is_token_revoked(jwt_payload['jti'])
+        return app.metadata_repository.is_token_revoked(jwt_payload['jti'])
 
     @jwt.expired_token_loader
     def expired_token_callback(jwt_header, jwt_payload):

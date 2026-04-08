@@ -1,19 +1,12 @@
-"""
-Authentication routes blueprint.
-Handles login, logout, token refresh, and user registration.
-"""
+"""Authentication controller routes."""
 
 import logging
 from flask import Blueprint, request
-from flask_jwt_extended import (
-    create_access_token, create_refresh_token,
-    jwt_required, get_jwt_identity, get_jwt
-)
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
 from ..app_context import get_app_ctx
 from ..rate_limit import rate_limit
 from ..responses import api_success, api_error
-from ..auth import hash_password, needs_rehash, verify_password
 
 logger = logging.getLogger('blockchain_audit')
 
@@ -33,34 +26,12 @@ def login():
     if not username or not password:
         return api_error("Username and password are required", 400)
 
-    user = app_ctx.metadata_store.get_user(username)
-    if not user or not verify_password(password, user['password_hash']):
+    auth_payload = app_ctx.auth_service.authenticate(username, password)
+    if not auth_payload:
         return api_error("Invalid credentials", 401, error_code="AUTH_FAILED")
 
-    # Upgrade legacy or outdated hashes after successful login.
-    if needs_rehash(user['password_hash']):
-        app_ctx.metadata_store.update_password_hash(username, hash_password(password))
-        user = app_ctx.metadata_store.get_user(username)
-
-    additional_claims = {
-        'role': user['role'],
-        'wallet_name': user.get('wallet_name')
-    }
-    access_token = create_access_token(identity=username, additional_claims=additional_claims)
-    refresh_token = create_refresh_token(identity=username, additional_claims=additional_claims)
-
-    app_ctx.metadata_store.update_last_login(username)
-    logger.info("User authenticated: %s (role: %s)", username, user['role'])
-
-    return api_success(data={
-        'access_token': access_token,
-        'refresh_token': refresh_token,
-        'user': {
-            'username': username,
-            'role': user['role'],
-            'wallet_name': user.get('wallet_name')
-        }
-    }, message="Authentication successful")
+    logger.info("User authenticated: %s (role: %s)", username, auth_payload['user']['role'])
+    return api_success(data=auth_payload, message="Authentication successful")
 
 
 @auth_bp.route('/refresh', methods=['POST'])
@@ -68,14 +39,7 @@ def login():
 def refresh():
     app_ctx = get_app_ctx()
     identity = get_jwt_identity()
-    user = app_ctx.metadata_store.get_user(identity)
-    access_token = create_access_token(
-        identity=identity,
-        additional_claims={
-            'role': user['role'] if user else 'viewer',
-            'wallet_name': user.get('wallet_name') if user else None,
-        }
-    )
+    access_token = app_ctx.auth_service.refresh_access_token(identity)
     return api_success(data={'access_token': access_token}, message="Token refreshed")
 
 
@@ -84,7 +48,7 @@ def refresh():
 def logout():
     app_ctx = get_app_ctx()
     jti = get_jwt()['jti']
-    app_ctx.metadata_store.revoke_token(jti)
+    app_ctx.auth_service.logout(jti)
     logger.info("User logged out: %s", get_jwt_identity())
     return api_success(message="Logout successful")
 
@@ -113,12 +77,7 @@ def register():
     if role not in ('admin', 'operator', 'viewer'):
         return api_error("Invalid role. Options: admin, operator, viewer", 400)
 
-    success = app_ctx.metadata_store.create_user(
-        username=username,
-        password_hash=hash_password(password),
-        role=role,
-        wallet_name=data.get('wallet_name')
-    )
+    success = app_ctx.auth_service.register_user(username, password, role, data.get('wallet_name'))
     if not success:
         return api_error(f"User '{username}' already exists", 409, error_code="USER_EXISTS")
 
