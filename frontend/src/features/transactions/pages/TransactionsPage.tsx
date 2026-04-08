@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 
@@ -33,12 +33,54 @@ const TRANSACTION_TYPES = [
   "CUSTOM",
 ];
 
-function safeParseJson(input: string): Record<string, unknown> {
-  const parsed = JSON.parse(input);
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("JSON must represent an object.");
+type KeyValueField = {
+  id: number;
+  key: string;
+  value: string;
+};
+
+const defaultDataFields: KeyValueField[] = [
+  { id: 1, key: "ip_address", value: "127.0.0.1" },
+];
+
+const defaultMetadataFields: KeyValueField[] = [
+  { id: 1, key: "source", value: "ui_form" },
+];
+
+function parseFieldValue(rawValue: string): unknown {
+  const value = rawValue.trim();
+  if (!value.length) {
+    return "";
   }
-  return parsed as Record<string, unknown>;
+
+  const lowered = value.toLowerCase();
+  if (lowered === "true") {
+    return true;
+  }
+  if (lowered === "false") {
+    return false;
+  }
+  if (lowered === "null") {
+    return null;
+  }
+
+  const numeric = Number(value);
+  if (!Number.isNaN(numeric) && value !== "") {
+    return numeric;
+  }
+
+  return value;
+}
+
+function fieldsToRecord(fields: KeyValueField[]): Record<string, unknown> {
+  return fields.reduce<Record<string, unknown>>((acc, field) => {
+    const key = field.key.trim();
+    if (!key.length) {
+      return acc;
+    }
+    acc[key] = parseFieldValue(field.value);
+    return acc;
+  }, {});
 }
 
 export function TransactionsPage() {
@@ -55,8 +97,8 @@ export function TransactionsPage() {
 
   const [walletName, setWalletName] = useState("");
   const [txType, setTxType] = useState("LOGIN");
-  const [dataJson, setDataJson] = useState('{"ip_address":"127.0.0.1"}');
-  const [metadataJson, setMetadataJson] = useState("");
+  const [dataFields, setDataFields] = useState<KeyValueField[]>(defaultDataFields);
+  const [metadataFields, setMetadataFields] = useState<KeyValueField[]>(defaultMetadataFields);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitResult, setSubmitResult] = useState<CreateTransactionResult | null>(null);
@@ -125,6 +167,43 @@ export function TransactionsPage() {
     void loadTransactions(1);
   }, [loadTransactions]);
 
+  const dataPreview = useMemo(() => JSON.stringify(fieldsToRecord(dataFields), null, 2), [dataFields]);
+  const metadataPreview = useMemo(
+    () => JSON.stringify(fieldsToRecord(metadataFields), null, 2),
+    [metadataFields],
+  );
+
+  const updateField = (
+    target: "data" | "metadata",
+    id: number,
+    fieldName: "key" | "value",
+    value: string,
+  ) => {
+    const updater = (field: KeyValueField): KeyValueField => (field.id === id ? { ...field, [fieldName]: value } : field);
+    if (target === "data") {
+      setDataFields((previous) => previous.map(updater));
+      return;
+    }
+    setMetadataFields((previous) => previous.map(updater));
+  };
+
+  const addField = (target: "data" | "metadata") => {
+    const newField: KeyValueField = { id: Date.now() + Math.floor(Math.random() * 10_000), key: "", value: "" };
+    if (target === "data") {
+      setDataFields((previous) => [...previous, newField]);
+      return;
+    }
+    setMetadataFields((previous) => [...previous, newField]);
+  };
+
+  const removeField = (target: "data" | "metadata", id: number) => {
+    if (target === "data") {
+      setDataFields((previous) => previous.filter((field) => field.id !== id));
+      return;
+    }
+    setMetadataFields((previous) => previous.filter((field) => field.id !== id));
+  };
+
   const onCreateTransaction = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitError(null);
@@ -132,14 +211,17 @@ export function TransactionsPage() {
     setSubmitLoading(true);
 
     try {
-      const data = safeParseJson(dataJson);
-      const metadata = metadataJson.trim() ? safeParseJson(metadataJson) : undefined;
+      const data = fieldsToRecord(dataFields);
+      if (Object.keys(data).length === 0) {
+        throw new Error("At least one data field is required.");
+      }
+      const metadata = fieldsToRecord(metadataFields);
 
       const created = await transactionsService.create({
         wallet_name: walletName.trim() || undefined,
         transaction_type: txType,
         data,
-        metadata,
+        metadata: Object.keys(metadata).length ? metadata : undefined,
       });
 
       setSubmitResult(created);
@@ -179,13 +261,66 @@ export function TransactionsPage() {
           </label>
 
           <label className="field">
-            <span>Data JSON</span>
-            <textarea rows={4} value={dataJson} onChange={(event) => setDataJson(event.target.value)} />
+            <span>Data fields</span>
+            <div className="kv-fields">
+              {dataFields.map((field, index) => (
+                <div key={field.id} className="kv-row">
+                  <input
+                    value={field.key}
+                    onChange={(event) => updateField("data", field.id, "key", event.target.value)}
+                    placeholder={`Field name #${index + 1}`}
+                  />
+                  <input
+                    value={field.value}
+                    onChange={(event) => updateField("data", field.id, "value", event.target.value)}
+                    placeholder="Value"
+                  />
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={() => removeField("data", field.id)}
+                    disabled={dataFields.length === 1}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button className="btn btn-secondary" type="button" onClick={() => addField("data")}>
+              Add data field
+            </button>
+            <pre className="json-block">{dataPreview}</pre>
           </label>
 
           <label className="field">
-            <span>Metadata JSON (optional)</span>
-            <textarea rows={3} value={metadataJson} onChange={(event) => setMetadataJson(event.target.value)} />
+            <span>Metadata fields (optional)</span>
+            <div className="kv-fields">
+              {metadataFields.map((field, index) => (
+                <div key={field.id} className="kv-row">
+                  <input
+                    value={field.key}
+                    onChange={(event) => updateField("metadata", field.id, "key", event.target.value)}
+                    placeholder={`Metadata key #${index + 1}`}
+                  />
+                  <input
+                    value={field.value}
+                    onChange={(event) => updateField("metadata", field.id, "value", event.target.value)}
+                    placeholder="Value"
+                  />
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={() => removeField("metadata", field.id)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button className="btn btn-secondary" type="button" onClick={() => addField("metadata")}>
+              Add metadata field
+            </button>
+            <pre className="json-block">{metadataPreview}</pre>
           </label>
 
           <button className="btn btn-primary" type="submit" disabled={submitLoading}>
@@ -307,4 +442,3 @@ export function TransactionsPage() {
     </section>
   );
 }
-
