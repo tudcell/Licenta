@@ -12,6 +12,7 @@ import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { Select } from "../../../components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table";
+import { useDebouncedValue } from "../../../hooks/useDebouncedValue";
 import { useAlertsSocket } from "../../../hooks/useAlertsSocket";
 import { alertsService, normalizeApiError } from "../../../services";
 import { useAuthStore } from "../../../stores/authStore";
@@ -26,17 +27,34 @@ export function AlertsPage() {
   const [rows, setRows] = useState<AlertRecord[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [severityFilter, setSeverityFilter] = useState("");
+  const [severityFilterInput, setSeverityFilterInput] = useState("");
   const [resolvedFilter, setResolvedFilter] = useState("all");
+  const severityFilter = useDebouncedValue(severityFilterInput, 350);
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [resolvingId, setResolvingId] = useState<number | null>(null);
 
-  const load = useCallback(async (targetPage = 1) => {
-    setLoading(true);
-    setError(null);
+  const severitySuggestions = useCallback(() => {
+    const merged = new Set<string>(["low", "medium", "high"]);
+    rows.forEach((row) => merged.add(row.severity));
+    const query = severityFilterInput.trim().toLowerCase();
+    return Array.from(merged)
+      .filter((value) => (query ? value.toLowerCase().includes(query) : true))
+      .slice(0, 8);
+  }, [rows, severityFilterInput]);
+
+  const load = useCallback(async (targetPage = 1, options?: { background?: boolean }) => {
+    const background = options?.background ?? false;
+    if (background) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+      setError(null);
+    }
+
     try {
       const resolved = resolvedFilter === "all" ? undefined : resolvedFilter === "true";
       const result = await alertsService.list({
@@ -50,7 +68,11 @@ export function AlertsPage() {
     } catch (loadError) {
       setError(normalizeApiError(loadError).message);
     } finally {
-      setLoading(false);
+      if (background) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   }, [resolvedFilter, severityFilter]);
 
@@ -60,10 +82,10 @@ export function AlertsPage() {
 
   useAlertsSocket(accessToken, {
     onAnomalyDetected: () => {
-      void load(1);
+      void load(pagination?.page ?? 1, { background: true });
     },
     onBlockMined: () => {
-      void load(1);
+      void load(pagination?.page ?? 1, { background: true });
     },
   });
 
@@ -93,7 +115,18 @@ export function AlertsPage() {
       <div className="grid gap-3 md:grid-cols-2">
         <div className="grid gap-2">
           <Label htmlFor="severity">Severity</Label>
-          <Input id="severity" value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value)} placeholder="high" />
+          <Input
+            id="severity"
+            list="alert-severity-suggestions"
+            value={severityFilterInput}
+            onChange={(event) => setSeverityFilterInput(event.target.value)}
+            placeholder="high"
+          />
+          <datalist id="alert-severity-suggestions">
+            {severitySuggestions().map((value) => (
+              <option key={value} value={value} />
+            ))}
+          </datalist>
         </div>
         <div className="grid gap-2">
           <Label htmlFor="resolved">Resolved</Label>
@@ -106,6 +139,7 @@ export function AlertsPage() {
       </div>
 
       {actionError ? <ErrorState message={actionError} /> : null}
+      {refreshing ? <p className="text-sm text-muted-foreground">Updating alerts...</p> : null}
 
       {rows.length === 0 ? (
         <EmptyState message="No alerts match current filters." />

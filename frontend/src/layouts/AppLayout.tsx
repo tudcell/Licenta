@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
 import { useAppStore } from "../stores/appStore";
 import { useAuthStore } from "../stores/authStore";
-import type { UserRole } from "../types/auth";
+import type { UserRole } from "../types";
 
 interface NavigationItem {
   path: string;
@@ -37,8 +37,8 @@ export function AppLayout() {
   };
 
   return (
-    <div className="grid min-h-screen bg-muted/30 md:grid-cols-[260px_1fr]">
-      <aside className={cn("flex flex-col gap-4 border-r bg-card p-4", sidebarOpen ? "" : "hidden")}>
+    <div className={cn("grid min-h-screen bg-muted/30 transition-[grid-template-columns] duration-300 ease-out", sidebarOpen ? "md:grid-cols-[260px_1fr]" : "md:grid-cols-1")}>
+      <aside className={cn("flex flex-col gap-4 border-r bg-card p-4 transition-all duration-300 ease-out", sidebarOpen ? "opacity-100" : "hidden opacity-0")}>
         <Link to="/dashboard" className="text-lg font-bold tracking-tight">
           Audit Console
         </Link>
@@ -49,7 +49,7 @@ export function AppLayout() {
               to={item.path}
               className={({ isActive }) =>
                 cn(
-                  "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  "rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
                   isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
                 )
               }
@@ -76,7 +76,7 @@ export function AppLayout() {
           </div>
         </header>
 
-        <section className="p-4 md:p-6">
+        <section className="page-enter p-4 md:p-6">
           <Outlet />
         </section>
       </div>

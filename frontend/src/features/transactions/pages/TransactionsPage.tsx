@@ -15,6 +15,7 @@ import { Label } from "../../../components/ui/label";
 import { Select } from "../../../components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../../components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table";
+import { useDebouncedValue } from "../../../hooks/useDebouncedValue";
 import { normalizeApiError, transactionsService } from "../../../services";
 import type { PaginationMeta } from "../../../types/api";
 import type {
@@ -120,11 +121,15 @@ export function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [typeFilter, setTypeFilter] = useState("");
-  const [senderFilter, setSenderFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [typeFilterInput, setTypeFilterInput] = useState("");
+  const [senderFilterInput, setSenderFilterInput] = useState("");
+  const [statusFilterInput, setStatusFilterInput] = useState("");
   const [flaggedFilter, setFlaggedFilter] = useState("all");
   const [page, setPage] = useState(1);
+
+  const typeFilter = useDebouncedValue(typeFilterInput, 350);
+  const senderFilter = useDebouncedValue(senderFilterInput, 350);
+  const statusFilter = useDebouncedValue(statusFilterInput, 350);
 
   const [walletName, setWalletName] = useState("");
   const [txType, setTxType] = useState("LOGIN");
@@ -233,7 +238,9 @@ export function TransactionsPage() {
         return !value.length;
       });
       if (missingRequired) {
-        throw new Error("Please complete all required fields for this transaction type.");
+        setSubmitError("Please complete all required fields for this transaction type.");
+        setSubmitLoading(false);
+        return;
       }
 
       const created = await transactionsService.create({
@@ -254,6 +261,33 @@ export function TransactionsPage() {
   };
 
   const rows: IndexedTransaction[] = listData?.transactions ?? [];
+
+  const typeSuggestions = useMemo(() => {
+    const merged = new Set<string>(TRANSACTION_TYPES);
+    rows.forEach((row) => merged.add(row.transaction_type));
+    const query = typeFilterInput.trim().toLowerCase();
+    return Array.from(merged)
+      .filter((value) => (query ? value.toLowerCase().includes(query) : true))
+      .slice(0, 8);
+  }, [rows, typeFilterInput]);
+
+  const senderSuggestions = useMemo(() => {
+    const merged = new Set<string>();
+    rows.forEach((row) => merged.add(row.sender_address));
+    const query = senderFilterInput.trim().toLowerCase();
+    return Array.from(merged)
+      .filter((value) => (query ? value.toLowerCase().includes(query) : true))
+      .slice(0, 8);
+  }, [rows, senderFilterInput]);
+
+  const statusSuggestions = useMemo(() => {
+    const merged = new Set<string>(["PENDING", "MINED", "FLAGGED", "REJECTED"]);
+    rows.forEach((row) => merged.add(row.tx_status));
+    const query = statusFilterInput.trim().toLowerCase();
+    return Array.from(merged)
+      .filter((value) => (query ? value.toLowerCase().includes(query) : true))
+      .slice(0, 8);
+  }, [rows, statusFilterInput]);
 
   return (
     <PageShell
@@ -353,15 +387,48 @@ export function TransactionsPage() {
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="grid gap-2">
               <Label htmlFor="typeFilter">Type</Label>
-              <Input id="typeFilter" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} />
+              <Input
+                id="typeFilter"
+                list="transaction-type-suggestions"
+                value={typeFilterInput}
+                onChange={(event) => setTypeFilterInput(event.target.value)}
+                placeholder="Start typing type..."
+              />
+              <datalist id="transaction-type-suggestions">
+                {typeSuggestions.map((value) => (
+                  <option key={value} value={value} />
+                ))}
+              </datalist>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="senderFilter">Sender</Label>
-              <Input id="senderFilter" value={senderFilter} onChange={(event) => setSenderFilter(event.target.value)} />
+              <Input
+                id="senderFilter"
+                list="transaction-sender-suggestions"
+                value={senderFilterInput}
+                onChange={(event) => setSenderFilterInput(event.target.value)}
+                placeholder="Start typing sender..."
+              />
+              <datalist id="transaction-sender-suggestions">
+                {senderSuggestions.map((value) => (
+                  <option key={value} value={value} />
+                ))}
+              </datalist>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="statusFilter">Status</Label>
-              <Input id="statusFilter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} />
+              <Input
+                id="statusFilter"
+                list="transaction-status-suggestions"
+                value={statusFilterInput}
+                onChange={(event) => setStatusFilterInput(event.target.value)}
+                placeholder="Start typing status..."
+              />
+              <datalist id="transaction-status-suggestions">
+                {statusSuggestions.map((value) => (
+                  <option key={value} value={value} />
+                ))}
+              </datalist>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="flaggedFilter">Flagged</Label>

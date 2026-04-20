@@ -17,13 +17,22 @@ const toTransactionFilterParams = (filters?: TransactionFilters): Record<string,
 
   const params: Record<string, string | number | boolean> = {};
   if (filters.type) {
-    params.type = filters.type;
+    const normalizedType = filters.type.trim().toUpperCase();
+    if (normalizedType) {
+      params.type = normalizedType;
+    }
   }
   if (filters.sender) {
-    params.sender = filters.sender;
+    const normalizedSender = filters.sender.trim();
+    if (normalizedSender) {
+      params.sender = normalizedSender;
+    }
   }
   if (filters.status) {
-    params.status = filters.status;
+    const normalizedStatus = filters.status.trim().toUpperCase();
+    if (normalizedStatus) {
+      params.status = normalizedStatus;
+    }
   }
   if (filters.flagged !== undefined) {
     params.flagged = filters.flagged;

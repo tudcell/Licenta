@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { io, type Socket } from "socket.io-client";
 
@@ -10,6 +10,12 @@ interface AlertsSocketHandlers {
 }
 
 export function useAlertsSocket(accessToken: string | null, handlers: AlertsSocketHandlers): void {
+  const handlersRef = useRef<AlertsSocketHandlers>({});
+
+  useEffect(() => {
+    handlersRef.current = handlers;
+  }, [handlers]);
+
   useEffect(() => {
     if (!accessToken) {
       return;
@@ -22,12 +28,12 @@ export function useAlertsSocket(accessToken: string | null, handlers: AlertsSock
         auth: { token: accessToken },
       });
 
-      if (handlers.onAnomalyDetected) {
-        socket.on("anomaly_detected", handlers.onAnomalyDetected);
-      }
-      if (handlers.onBlockMined) {
-        socket.on("block_mined", handlers.onBlockMined);
-      }
+      socket.on("anomaly_detected", () => {
+        handlersRef.current.onAnomalyDetected?.();
+      });
+      socket.on("block_mined", () => {
+        handlersRef.current.onBlockMined?.();
+      });
     } catch {
       // Keep page functional even when websocket fails.
     }
@@ -37,6 +43,6 @@ export function useAlertsSocket(accessToken: string | null, handlers: AlertsSock
         socket.disconnect();
       }
     };
-  }, [accessToken, handlers.onAnomalyDetected, handlers.onBlockMined]);
+  }, [accessToken]);
 }
 

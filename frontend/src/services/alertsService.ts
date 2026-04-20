@@ -10,7 +10,10 @@ const toAlertFilterParams = (filters?: AlertFilters): Record<string, string | bo
 
   const params: Record<string, string | boolean> = {};
   if (filters.severity) {
-    params.severity = filters.severity;
+    const normalizedSeverity = filters.severity.trim().toLowerCase();
+    if (normalizedSeverity) {
+      params.severity = normalizedSeverity;
+    }
   }
   if (filters.resolved !== undefined) {
     params.resolved = filters.resolved;
