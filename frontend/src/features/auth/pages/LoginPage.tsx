@@ -3,8 +3,11 @@ import type { FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { ErrorState } from "../../../components/states/ErrorState";
+import { Button } from "../../../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Input } from "../../../components/ui/input";
+import { Label } from "../../../components/ui/label";
 import { useAuthStore } from "../../../stores/authStore";
-import "../../../styles/pages/login.css";
 
 interface LocationState {
   from?: string;
@@ -60,34 +63,43 @@ export function LoginPage() {
   };
 
   return (
-    <div className="login-page">
-      <h1>Blockchain Audit Console</h1>
-      <p className="muted">Sign in with your API credentials to access the monitoring interface.</p>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-2xl">Blockchain Audit Console</CardTitle>
+        <CardDescription>Sign in with your API credentials to access the monitoring interface.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <div className="grid gap-2">
+            <Label htmlFor="username">Username</Label>
+            <Input
+              id="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              autoComplete="username"
+            />
+          </div>
 
-      <form className="form" onSubmit={handleSubmit}>
-        <label className="field">
-          <span>Username</span>
-          <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" />
-        </label>
+          <div className="grid gap-2">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+            />
+          </div>
 
-        <label className="field">
-          <span>Password</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            autoComplete="current-password"
-          />
-        </label>
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? "Signing in..." : "Sign in"}
+          </Button>
+        </form>
 
-        <button type="submit" className="btn btn-primary" disabled={loading}>
-          {loading ? "Signing in..." : "Sign in"}
-        </button>
-      </form>
-
-      {localError ? <ErrorState title="Validation error" message={localError} /> : null}
-      {error ? <ErrorState message={error} /> : null}
-    </div>
+        {localError ? <ErrorState title="Validation error" message={localError} /> : null}
+        {error ? <ErrorState message={error} /> : null}
+      </CardContent>
+    </Card>
   );
 }
 

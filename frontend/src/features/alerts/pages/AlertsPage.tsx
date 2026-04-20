@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { PageShell } from "../../../components/common/PageShell";
+import { PaginationBar } from "../../../components/common/PaginationBar";
 import { EmptyState } from "../../../components/states/EmptyState";
 import { ErrorState } from "../../../components/states/ErrorState";
 import { LoadingState } from "../../../components/states/LoadingState";
+import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import { Input } from "../../../components/ui/input";
+import { Label } from "../../../components/ui/label";
+import { Select } from "../../../components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table";
 import { useAlertsSocket } from "../../../hooks/useAlertsSocket";
 import { alertsService, normalizeApiError } from "../../../services";
 import { useAuthStore } from "../../../stores/authStore";
 import type { AlertRecord } from "../../../types/alerts";
 import type { PaginationMeta } from "../../../types/api";
-import "../../../styles/pages/alerts.css";
 
 export function AlertsPage() {
   const role = useAuthStore((state) => state.user?.role);
@@ -82,22 +89,20 @@ export function AlertsPage() {
   }
 
   return (
-    <section className="page-panel page-alerts">
-      <h1>Alerts</h1>
-
-      <div className="filters-grid">
-        <label className="field">
-          <span>Severity</span>
-          <input value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value)} placeholder="high" />
-        </label>
-        <label className="field">
-          <span>Resolved</span>
-          <select value={resolvedFilter} onChange={(event) => setResolvedFilter(event.target.value)}>
+    <PageShell title="Alerts" description="Real-time and indexed anomaly alerts.">
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-2">
+          <Label htmlFor="severity">Severity</Label>
+          <Input id="severity" value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value)} placeholder="high" />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="resolved">Resolved</Label>
+          <Select id="resolved" value={resolvedFilter} onChange={(event) => setResolvedFilter(event.target.value)}>
             <option value="all">All</option>
             <option value="true">Resolved</option>
             <option value="false">Unresolved</option>
-          </select>
-        </label>
+          </Select>
+        </div>
       </div>
 
       {actionError ? <ErrorState message={actionError} /> : null}
@@ -106,54 +111,69 @@ export function AlertsPage() {
         <EmptyState message="No alerts match current filters." />
       ) : (
         <>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Severity</th>
-                <th>Type</th>
-                <th>Transaction</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>ID</TableHead>
+                <TableHead>Severity</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Transaction</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rows.map((alert) => (
-                <tr key={alert.id}>
-                  <td>{alert.id}</td>
-                  <td>{alert.severity}</td>
-                  <td>{alert.alert_type}</td>
-                  <td><Link to={`/transactions/${alert.transaction_id}`}>{alert.transaction_id.slice(0, 12)}...</Link></td>
-                  <td>{alert.is_resolved ? "Resolved" : "Open"}</td>
-                  <td>
+                <TableRow key={alert.id}>
+                  <TableCell>{alert.id}</TableCell>
+                  <TableCell>
+                    <Badge variant={alert.severity.toLowerCase() === "high" ? "destructive" : "secondary"} className="capitalize">
+                      {alert.severity}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{alert.alert_type}</TableCell>
+                  <TableCell>
+                    <Link to={`/transactions/${alert.transaction_id}`} className="font-medium text-primary hover:underline">
+                      {alert.transaction_id.slice(0, 12)}...
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={alert.is_resolved ? "secondary" : "outline"}>{alert.is_resolved ? "Resolved" : "Open"}</Badge>
+                  </TableCell>
+                  <TableCell>
                     {canResolve && !alert.is_resolved ? (
-                      <button
+                      <Button
                         type="button"
-                        className="btn btn-secondary"
+                        variant="outline"
+                        size="sm"
                         disabled={resolvingId === alert.id}
                         onClick={() => void onResolve(alert.id)}
                       >
                         {resolvingId === alert.id ? "Resolving..." : "Resolve"}
-                      </button>
+                      </Button>
                     ) : (
                       "-"
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
 
           {pagination ? (
-            <div className="pagination-bar">
-              <button type="button" className="btn btn-secondary" disabled={!pagination.has_prev} onClick={() => void load(pagination.page - 1)}>Previous</button>
-              <span>Page {pagination.page}/{pagination.total_pages}</span>
-              <button type="button" className="btn btn-secondary" disabled={!pagination.has_next} onClick={() => void load(pagination.page + 1)}>Next</button>
-            </div>
+            <PaginationBar
+              page={pagination.page}
+              totalPages={pagination.total_pages}
+              total={pagination.total}
+              hasPrevious={pagination.has_prev}
+              hasNext={pagination.has_next}
+              onPrevious={() => void load(pagination.page - 1)}
+              onNext={() => void load(pagination.page + 1)}
+            />
           ) : null}
         </>
       )}
-    </section>
+    </PageShell>
   );
 }
 

@@ -1,3 +1,5 @@
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+
 interface EmptyStateProps {
   title?: string;
   message: string;
@@ -5,10 +7,12 @@ interface EmptyStateProps {
 
 export function EmptyState({ title = "No data", message }: EmptyStateProps) {
   return (
-    <div className="state-card">
-      <h3>{title}</h3>
-      <p>{message}</p>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0 text-sm text-muted-foreground">{message}</CardContent>
+    </Card>
   );
 }
 

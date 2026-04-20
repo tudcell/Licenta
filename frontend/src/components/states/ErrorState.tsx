@@ -1,3 +1,6 @@
+import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { Button } from "../ui/button";
+
 interface ErrorStateProps {
   title?: string;
   message: string;
@@ -6,15 +9,15 @@ interface ErrorStateProps {
 
 export function ErrorState({ title = "Something went wrong", message, onRetry }: ErrorStateProps) {
   return (
-    <div className="state-card state-card-error" role="alert">
-      <h3>{title}</h3>
-      <p>{message}</p>
+    <Alert variant="destructive">
+      <AlertTitle>{title}</AlertTitle>
+      <AlertDescription>{message}</AlertDescription>
       {onRetry ? (
-        <button type="button" className="btn btn-secondary" onClick={onRetry}>
+        <Button type="button" variant="outline" className="mt-3" onClick={onRetry}>
           Retry
-        </button>
+        </Button>
       ) : null}
-    </div>
+    </Alert>
   );
 }
 

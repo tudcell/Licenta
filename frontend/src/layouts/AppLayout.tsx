@@ -1,5 +1,8 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { cn } from "../lib/utils";
 import { useAppStore } from "../stores/appStore";
 import { useAuthStore } from "../stores/authStore";
 import type { UserRole } from "../types/auth";
@@ -34,17 +37,22 @@ export function AppLayout() {
   };
 
   return (
-    <div className="app-shell">
-      <aside className={`sidebar ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
-        <Link to="/dashboard" className="brand-link">
+    <div className="grid min-h-screen bg-muted/30 md:grid-cols-[260px_1fr]">
+      <aside className={cn("flex flex-col gap-4 border-r bg-card p-4", sidebarOpen ? "" : "hidden")}>
+        <Link to="/dashboard" className="text-lg font-bold tracking-tight">
           Audit Console
         </Link>
-        <nav className="main-nav">
+        <nav className="grid gap-1">
           {visibleLinks.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
-              className={({ isActive }) => `nav-item ${isActive ? "nav-item-active" : ""}`}
+              className={({ isActive }) =>
+                cn(
+                  "rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+                )
+              }
             >
               {item.label}
             </NavLink>
@@ -52,21 +60,23 @@ export function AppLayout() {
         </nav>
       </aside>
 
-      <div className="main-content">
-        <header className="topbar">
-          <button type="button" className="btn btn-secondary" onClick={toggleSidebar}>
+      <div className="flex min-h-screen flex-col">
+        <header className="flex items-center justify-between gap-4 border-b bg-background px-4 py-3">
+          <Button type="button" variant="outline" onClick={toggleSidebar}>
             {sidebarOpen ? "Hide menu" : "Show menu"}
-          </button>
-          <div className="topbar-user">
-            <span>{user?.username}</span>
-            <span className="role-pill">{user?.role}</span>
-            <button type="button" className="btn btn-danger" onClick={onLogout}>
+          </Button>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">{user?.username}</span>
+            <Badge variant="outline" className="uppercase">
+              {user?.role}
+            </Badge>
+            <Button type="button" variant="destructive" onClick={onLogout}>
               Logout
-            </button>
+            </Button>
           </div>
         </header>
 
-        <section className="page-content">
+        <section className="p-4 md:p-6">
           <Outlet />
         </section>
       </div>

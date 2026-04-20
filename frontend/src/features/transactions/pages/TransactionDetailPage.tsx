@@ -2,12 +2,14 @@ import { useParams } from "react-router-dom";
 
 import { useCallback, useEffect, useState } from "react";
 
+import { PageShell } from "../../../components/common/PageShell";
 import { EmptyState } from "../../../components/states/EmptyState";
 import { ErrorState } from "../../../components/states/ErrorState";
 import { LoadingState } from "../../../components/states/LoadingState";
+import { Badge } from "../../../components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { alertsService, normalizeApiError, transactionsService } from "../../../services";
 import type { AlertRecord, TransactionAuditReport, TransactionDetailPayload } from "../../../types";
-import "../../../styles/pages/transaction-detail.css";
 
 interface DetailData {
   detail: TransactionDetailPayload;
@@ -82,32 +84,41 @@ export function TransactionDetailPage() {
   }
 
   return (
-    <section className="page-panel page-transaction-detail">
-      <h1>Transaction detail</h1>
-      <p>Transaction ID: {id}</p>
+    <PageShell title="Transaction detail" description={`Transaction ID: ${id ?? "-"}`}>
 
       {data.detail.index_record ? (
-        <div className="state-card">
-          <h3>Indexed record</h3>
-          <p>Type: {data.detail.index_record.transaction_type}</p>
-          <p>Status: {data.detail.index_record.tx_status}</p>
-          <p>Sender: {data.detail.index_record.sender_address}</p>
-          <p>Amount: {data.detail.index_record.amount}</p>
-          <p>ML score: {typeof data.detail.index_record.ml_score === "number" ? data.detail.index_record.ml_score.toFixed(4) : "-"}</p>
-          <p>ML reason: {data.detail.index_record.ml_reason || "No persisted ML reason recorded."}</p>
-          <p>Timestamp: {new Date(data.detail.index_record.timestamp).toLocaleString()}</p>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Indexed record</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p>Type: {data.detail.index_record.transaction_type}</p>
+            <p>Status: <Badge variant="outline">{data.detail.index_record.tx_status}</Badge></p>
+            <p>Sender: {data.detail.index_record.sender_address}</p>
+            <p>Amount: {data.detail.index_record.amount}</p>
+            <p>ML score: {typeof data.detail.index_record.ml_score === "number" ? data.detail.index_record.ml_score.toFixed(4) : "-"}</p>
+            <p>ML reason: {data.detail.index_record.ml_reason || "No persisted ML reason recorded."}</p>
+            <p>Timestamp: {new Date(data.detail.index_record.timestamp).toLocaleString()}</p>
+          </CardContent>
+        </Card>
       ) : null}
 
       {data.detail.proof ? (
-        <div className="state-card">
-          <h3>Merkle proof payload</h3>
-          <pre className="json-block">{JSON.stringify(data.detail.proof, null, 2)}</pre>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Merkle proof payload</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <pre className="max-h-80 overflow-auto rounded-md border bg-muted p-3 text-xs">{JSON.stringify(data.detail.proof, null, 2)}</pre>
+          </CardContent>
+        </Card>
       ) : null}
 
-      <div className="state-card">
-        <h3>Analyzer status</h3>
+      <Card>
+        <CardHeader>
+          <CardTitle>Analyzer status</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
         {data.analysis ? (
           <>
             <p>Overall status: {data.analysis.overall_status}</p>
@@ -133,7 +144,7 @@ export function TransactionDetailPage() {
                 <p>Source: Persisted indexed ML data</p>
                 <p>Score: {typeof persistedMlScore === "number" ? persistedMlScore.toFixed(4) : "-"}</p>
                 <p>Reason: {persistedMlReason || "No model explanation available."}</p>
-                <p className="muted-text">The detector may be offline or the transaction was never re-analyzed after restart, but the saved ML result is still available.</p>
+                <p className="text-muted-foreground">The detector may be offline or the transaction was never re-analyzed after restart, but the saved ML result is still available.</p>
               </>
             ) : (
               <p>No persisted ML anomaly payload is available for this transaction yet.</p>
@@ -156,7 +167,7 @@ export function TransactionDetailPage() {
             <p>Source: Persisted indexed ML data</p>
             <p>Score: {typeof persistedMlScore === "number" ? persistedMlScore.toFixed(4) : "-"}</p>
             <p>Reason: {persistedMlReason || "No model explanation available."}</p>
-            <p className="muted-text">The transaction was indexed with ML data, but live analyzer output was not available after reload.</p>
+            <p className="text-muted-foreground">The transaction was indexed with ML data, but live analyzer output was not available after reload.</p>
 
             <p>
               Flagged decision: {indexedRecord?.is_flagged
@@ -176,8 +187,9 @@ export function TransactionDetailPage() {
             <p>Flagged decision: Not flagged (or not scored yet). This can happen while transaction is still pending.</p>
           </>
         )}
-      </div>
-    </section>
+        </CardContent>
+      </Card>
+    </PageShell>
   );
 }
 

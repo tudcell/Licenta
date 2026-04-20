@@ -1,16 +1,21 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { PageShell } from "../../../components/common/PageShell";
 import { EmptyState } from "../../../components/states/EmptyState";
 import { ErrorState } from "../../../components/states/ErrorState";
 import { LoadingState } from "../../../components/states/LoadingState";
+import { Alert, AlertDescription, AlertTitle } from "../../../components/ui/alert";
+import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table";
 import { alertsService, anomalyService, blockchainService, normalizeApiError, transactionsService } from "../../../services";
 import { useAuthStore } from "../../../stores/authStore";
 import type { AlertRecord } from "../../../types/alerts";
 import type { AnomalyStatsPayload } from "../../../types/anomaly";
 import type { BlockchainStats, HealthPayload } from "../../../types/blockchain";
 import type { IndexedTransaction } from "../../../types/transactions";
-import "../../../styles/pages/dashboard.css";
 
 interface DashboardData {
   health: HealthPayload;
@@ -120,119 +125,173 @@ export function DashboardPage() {
   }
 
   return (
-    <section className="page-panel page-dashboard">
-      <h1>Dashboard</h1>
-      <p className="muted">System overview from blockchain, transactions, and anomaly alerts.</p>
-
-      <div className="kpi-grid">
-        <article className="kpi-card">
-          <h3>Chain Height</h3>
-          <strong>{data.stats.height}</strong>
-        </article>
-        <article className="kpi-card">
-          <h3>Total Transactions</h3>
-          <strong>{data.stats.total_transactions}</strong>
-        </article>
-        <article className="kpi-card">
-          <h3>Mempool</h3>
-          <strong>{data.health.mempool_size}</strong>
-        </article>
-        <article className="kpi-card">
-          <h3>Unresolved Alerts</h3>
-          <strong>{data.health.alerts_unresolved}</strong>
-        </article>
-        <article className="kpi-card">
-          <h3>Detector</h3>
-          <strong>{data.anomaly.analysis.detector_fitted ? "Trained" : "Untrained"}</strong>
-        </article>
+    <PageShell title="Dashboard" description="System overview from blockchain, transactions, and anomaly alerts.">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Chain Height</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold">{data.stats.height}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Transactions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold">{data.stats.total_transactions}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Mempool</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold">{data.health.mempool_size}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Unresolved Alerts</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold">{data.health.alerts_unresolved}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Detector</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Badge variant={data.anomaly.analysis.detector_fitted ? "default" : "secondary"}>
+              {data.anomaly.analysis.detector_fitted ? "Trained" : "Untrained"}
+            </Badge>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="quick-actions">
-        <Link to="/transactions" className="btn btn-primary">Create transaction</Link>
-        <Link to="/blockchain" className="btn btn-secondary">View blockchain</Link>
-        <Link to="/alerts" className="btn btn-secondary">Review alerts</Link>
+      <div className="flex flex-wrap gap-2">
+        <Button asChild>
+          <Link to="/transactions">Create transaction</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link to="/blockchain">View blockchain</Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link to="/alerts">Review alerts</Link>
+        </Button>
       </div>
 
-      <section className="dashboard-controls">
-        <h2>Detector and Demo Controls</h2>
-        <p className="muted">
-          Detector status: {data.anomaly.analysis.detector_fitted ? "trained" : "not trained"}
-          {data.anomaly.analysis.trained_at ? ` (last training: ${new Date(data.anomaly.analysis.trained_at).toLocaleString()})` : ""}
-        </p>
-        {actionError ? <ErrorState message={actionError} /> : null}
-        {actionMessage ? <p className="dashboard-action-message">{actionMessage}</p> : null}
-        <div className="quick-actions">
-          <button type="button" className="btn btn-secondary" disabled={!canManageDetector || trainLoading} onClick={() => void trainWithSynthetic()}>
-            {trainLoading ? "Training..." : "Train detector (synthetic)"}
-          </button>
-          <button type="button" className="btn btn-secondary" disabled={!canManageDetector || trainLoading} onClick={() => void retrainFromBlockchain()}>
-            {trainLoading ? "Training..." : "Train detector (blockchain)"}
-          </button>
-          <button type="button" className="btn btn-secondary" disabled={!canManageDetector || demoLoading} onClick={() => void generateDemoData()}>
-            {demoLoading ? "Generating..." : "Generate demo data"}
-          </button>
-        </div>
-        {!canManageDetector ? <p className="muted">Only admin/operator can train detector or generate demo data.</p> : null}
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle>Detector and Demo Controls</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Detector status: {data.anomaly.analysis.detector_fitted ? "trained" : "not trained"}
+            {data.anomaly.analysis.trained_at
+              ? ` (last training: ${new Date(data.anomaly.analysis.trained_at).toLocaleString()})`
+              : ""}
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {actionError ? <ErrorState message={actionError} /> : null}
+          {actionMessage ? (
+            <Alert>
+              <AlertTitle>Action completed</AlertTitle>
+              <AlertDescription>{actionMessage}</AlertDescription>
+            </Alert>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" disabled={!canManageDetector || trainLoading} onClick={() => void trainWithSynthetic()}>
+              {trainLoading ? "Training..." : "Train detector (synthetic)"}
+            </Button>
+            <Button type="button" variant="outline" disabled={!canManageDetector || trainLoading} onClick={() => void retrainFromBlockchain()}>
+              {trainLoading ? "Training..." : "Train detector (blockchain)"}
+            </Button>
+            <Button type="button" variant="outline" disabled={!canManageDetector || demoLoading} onClick={() => void generateDemoData()}>
+              {demoLoading ? "Generating..." : "Generate demo data"}
+            </Button>
+          </div>
+          {!canManageDetector ? (
+            <p className="text-sm text-muted-foreground">Only admin/operator can train detector or generate demo data.</p>
+          ) : null}
+        </CardContent>
+      </Card>
 
-      <div className="two-col-grid">
-        <section>
-          <h2>Recent Transactions</h2>
-          {data.recentTransactions.length === 0 ? (
-            <EmptyState message="No indexed transactions found." />
-          ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Timestamp</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.recentTransactions.map((tx) => (
-                  <tr key={tx.transaction_id}>
-                    <td><Link to={`/transactions/${tx.transaction_id}`}>{tx.transaction_id.slice(0, 12)}...</Link></td>
-                    <td>{tx.transaction_type}</td>
-                    <td>{tx.tx_status}</td>
-                    <td>{new Date(tx.timestamp).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Transactions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.recentTransactions.length === 0 ? (
+              <EmptyState message="No indexed transactions found." />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Timestamp</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.recentTransactions.map((tx) => (
+                    <TableRow key={tx.transaction_id}>
+                      <TableCell>
+                        <Link to={`/transactions/${tx.transaction_id}`} className="font-medium text-primary hover:underline">
+                          {tx.transaction_id.slice(0, 12)}...
+                        </Link>
+                      </TableCell>
+                      <TableCell>{tx.transaction_type}</TableCell>
+                      <TableCell>{tx.tx_status}</TableCell>
+                      <TableCell>{new Date(tx.timestamp).toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
 
-        <section>
-          <h2>Recent Alerts</h2>
-          {data.recentAlerts.length === 0 ? (
-            <EmptyState message="No alerts recorded yet." />
-          ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Severity</th>
-                  <th>Transaction</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.recentAlerts.map((alert) => (
-                  <tr key={alert.id}>
-                    <td>{alert.id}</td>
-                    <td>{alert.severity}</td>
-                    <td><Link to={`/transactions/${alert.transaction_id}`}>{alert.transaction_id.slice(0, 12)}...</Link></td>
-                    <td>{alert.is_resolved ? "Resolved" : "Open"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Alerts</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.recentAlerts.length === 0 ? (
+              <EmptyState message="No alerts recorded yet." />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Severity</TableHead>
+                    <TableHead>Transaction</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.recentAlerts.map((alert) => (
+                    <TableRow key={alert.id}>
+                      <TableCell>{alert.id}</TableCell>
+                      <TableCell className="capitalize">{alert.severity}</TableCell>
+                      <TableCell>
+                        <Link to={`/transactions/${alert.transaction_id}`} className="font-medium text-primary hover:underline">
+                          {alert.transaction_id.slice(0, 12)}...
+                        </Link>
+                      </TableCell>
+                      <TableCell>{alert.is_resolved ? "Resolved" : "Open"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
       </div>
-    </section>
+    </PageShell>
   );
 }
 

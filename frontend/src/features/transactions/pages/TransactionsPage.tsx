@@ -2,9 +2,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 
+import { PageShell } from "../../../components/common/PageShell";
+import { PaginationBar } from "../../../components/common/PaginationBar";
 import { EmptyState } from "../../../components/states/EmptyState";
 import { ErrorState } from "../../../components/states/ErrorState";
 import { LoadingState } from "../../../components/states/LoadingState";
+import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Input } from "../../../components/ui/input";
+import { Label } from "../../../components/ui/label";
+import { Select } from "../../../components/ui/select";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../../components/ui/sheet";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table";
 import { normalizeApiError, transactionsService } from "../../../services";
 import type { PaginationMeta } from "../../../types/api";
 import type {
@@ -13,7 +23,6 @@ import type {
   TransactionFilters,
   TransactionListPayload,
 } from "../../../types/transactions";
-import "../../../styles/pages/transactions.css";
 
 const TRANSACTION_TYPES = [
   "LOGIN",
@@ -181,7 +190,7 @@ export function TransactionsPage() {
     }));
   };
 
-  const buildTransactionData = () => {
+  const buildTransactionData = useCallback(() => {
     const data = selectedTemplate.fields.reduce<Record<string, unknown>>((acc, field) => {
       const raw = (templateValues[field.name] ?? "").trim();
       if (!raw.length) {
@@ -206,9 +215,9 @@ export function TransactionsPage() {
     }
 
     return data;
-  };
+  }, [selectedTemplate.fields, templateValues, txType]);
 
-  const dataPreview = useMemo(() => JSON.stringify(buildTransactionData(), null, 2), [templateValues, txType]);
+  const dataPreview = useMemo(() => JSON.stringify(buildTransactionData(), null, 2), [buildTransactionData]);
   const metadataPreview = useMemo(() => JSON.stringify(selectedTemplate.metadata, null, 2), [selectedTemplate]);
 
   const onCreateTransaction = async (event: FormEvent<HTMLFormElement>) => {
@@ -247,182 +256,186 @@ export function TransactionsPage() {
   const rows: IndexedTransaction[] = listData?.transactions ?? [];
 
   return (
-    <section className="page-panel page-transactions">
-      <h1>Transactions</h1>
-
-      <section>
-        <h2>Simulation</h2>
-        <button className="btn btn-primary" type="button" onClick={() => setShowCreateDrawer(true)}>
+    <PageShell
+      title="Transactions"
+      description="Filter indexed transactions and simulate new events for blockchain/ML analysis."
+      actions={
+        <Button type="button" onClick={() => setShowCreateDrawer(true)}>
           Add transaction
-        </button>
+        </Button>
+      }
+    >
+      <Sheet open={showCreateDrawer} onOpenChange={setShowCreateDrawer}>
+        <SheetContent side="right" className="overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Create transaction</SheetTitle>
+            <SheetDescription>Build payload from typed templates and submit to backend.</SheetDescription>
+          </SheetHeader>
 
-        <div
-          className={`transaction-drawer-backdrop ${showCreateDrawer ? "is-open" : ""}`}
-          onClick={() => setShowCreateDrawer(false)}
-        >
-          <div
-            className={`transaction-drawer ${showCreateDrawer ? "is-open" : ""}`}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="transaction-drawer-header">
-              <h3>Create transaction</h3>
-              <button className="btn btn-secondary" type="button" onClick={() => setShowCreateDrawer(false)}>
-                Close
-              </button>
+          <form className="mt-6 space-y-4" onSubmit={onCreateTransaction}>
+            <div className="grid gap-2">
+              <Label htmlFor="walletName">Wallet name (optional)</Label>
+              <Input
+                id="walletName"
+                value={walletName}
+                onChange={(event) => setWalletName(event.target.value)}
+                placeholder="admin"
+              />
             </div>
 
-            <form className="form" onSubmit={onCreateTransaction}>
-              <label className="field">
-                <span>Wallet name (optional)</span>
-                <input value={walletName} onChange={(event) => setWalletName(event.target.value)} placeholder="admin" />
-              </label>
-
-              <label className="field">
-                <span>Transaction type</span>
-                <select value={txType} onChange={(event) => setTxType(event.target.value)}>
-                  {TRANSACTION_TYPES.map((type) => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="template-grid">
-                {selectedTemplate.fields.map((field) => (
-                  <label key={field.name} className="field">
-                    <span>{field.label}</span>
-                    <input
-                      type={field.inputType ?? "text"}
-                      value={templateValues[field.name] ?? ""}
-                      placeholder={field.placeholder}
-                      onChange={(event) => updateTemplateValue(field.name, event.target.value)}
-                      required
-                    />
-                  </label>
+            <div className="grid gap-2">
+              <Label htmlFor="transactionType">Transaction type</Label>
+              <Select id="transactionType" value={txType} onChange={(event) => setTxType(event.target.value)}>
+                {TRANSACTION_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
                 ))}
+              </Select>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              {selectedTemplate.fields.map((field) => (
+                <div key={field.name} className="grid gap-2">
+                  <Label htmlFor={`field-${field.name}`}>{field.label}</Label>
+                  <Input
+                    id={`field-${field.name}`}
+                    type={field.inputType ?? "text"}
+                    value={templateValues[field.name] ?? ""}
+                    placeholder={field.placeholder}
+                    onChange={(event) => updateTemplateValue(field.name, event.target.value)}
+                    required
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-2">
+                <Label>Transaction payload preview</Label>
+                <pre className="max-h-72 overflow-auto rounded-md border bg-muted p-3 text-xs">{dataPreview}</pre>
               </div>
-
-              <div className="template-preview-grid">
-                <label className="field">
-                  <span>Transaction payload preview</span>
-                  <pre className="json-block">{dataPreview}</pre>
-                </label>
-                <label className="field">
-                  <span>Auto metadata preview</span>
-                  <pre className="json-block">{metadataPreview}</pre>
-                </label>
+              <div className="grid gap-2">
+                <Label>Auto metadata preview</Label>
+                <pre className="max-h-72 overflow-auto rounded-md border bg-muted p-3 text-xs">{metadataPreview}</pre>
               </div>
+            </div>
 
-              <button className="btn btn-primary" type="submit" disabled={submitLoading}>
-                {submitLoading ? "Submitting..." : "Submit transaction"}
-              </button>
-            </form>
-          </div>
-        </div>
+            <Button type="submit" disabled={submitLoading}>
+              {submitLoading ? "Submitting..." : "Submit transaction"}
+            </Button>
+          </form>
+        </SheetContent>
+      </Sheet>
 
-        {submitError ? <ErrorState title="Create transaction failed" message={submitError} /> : null}
-        {submitResult ? (
-          <div className="state-card">
-            <h3>Transaction created</h3>
+      {submitError ? <ErrorState title="Create transaction failed" message={submitError} /> : null}
+      {submitResult ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Transaction created</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
             <p>Status: {submitResult.analysis.overall_status}</p>
             <p>
-              <Link to={`/transactions/${String(submitResult.transaction.transaction_id ?? "")}`}>Open detail</Link>
+              <Link className="text-primary hover:underline" to={`/transactions/${String(submitResult.transaction.transaction_id ?? "")}`}>
+                Open detail
+              </Link>
             </p>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>List and filters</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-2">
+              <Label htmlFor="typeFilter">Type</Label>
+              <Input id="typeFilter" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="senderFilter">Sender</Label>
+              <Input id="senderFilter" value={senderFilter} onChange={(event) => setSenderFilter(event.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="statusFilter">Status</Label>
+              <Input id="statusFilter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="flaggedFilter">Flagged</Label>
+              <Select id="flaggedFilter" value={flaggedFilter} onChange={(event) => setFlaggedFilter(event.target.value)}>
+                <option value="all">All</option>
+                <option value="true">True</option>
+                <option value="false">False</option>
+              </Select>
+            </div>
           </div>
-        ) : null}
-      </section>
 
-      <section>
-        <h2>List and Filters</h2>
-        <div className="filters-grid">
-          <label className="field">
-            <span>Type</span>
-            <input value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} />
-          </label>
-          <label className="field">
-            <span>Sender</span>
-            <input value={senderFilter} onChange={(event) => setSenderFilter(event.target.value)} />
-          </label>
-          <label className="field">
-            <span>Status</span>
-            <input value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} />
-          </label>
-          <label className="field">
-            <span>Flagged</span>
-            <select value={flaggedFilter} onChange={(event) => setFlaggedFilter(event.target.value)}>
-              <option value="all">All</option>
-              <option value="true">True</option>
-              <option value="false">False</option>
-            </select>
-          </label>
-        </div>
+          {loading ? <LoadingState message="Loading transactions..." /> : null}
+          {error ? <ErrorState message={error} onRetry={() => void loadTransactions(page)} /> : null}
+          {!loading && !error && rows.length === 0 ? <EmptyState message="No transactions match current filters." /> : null}
 
-        {loading ? <LoadingState message="Loading transactions..." /> : null}
-        {error ? <ErrorState message={error} onRetry={() => void loadTransactions(page)} /> : null}
+          {!loading && !error && rows.length > 0 ? (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Flagged</TableHead>
+                    <TableHead>ML Score</TableHead>
+                    <TableHead>ML Reason</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Timestamp</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row) => {
+                    const mlScore = typeof row.ml_score === "number" ? row.ml_score.toFixed(4) : "-";
+                    const mlReason = row.ml_reason ?? "No anomaly detected or detector not trained";
 
-        {!loading && !error && rows.length === 0 ? <EmptyState message="No transactions match current filters." /> : null}
+                    return (
+                      <TableRow key={row.transaction_id}>
+                        <TableCell>
+                          <Link className="font-medium text-primary hover:underline" to={`/transactions/${row.transaction_id}`}>
+                            {row.transaction_id.slice(0, 12)}...
+                          </Link>
+                        </TableCell>
+                        <TableCell>{row.transaction_type}</TableCell>
+                        <TableCell>{row.tx_status}</TableCell>
+                        <TableCell>
+                          <Badge variant={row.is_flagged ? "destructive" : "secondary"}>{row.is_flagged ? "Yes" : "No"}</Badge>
+                        </TableCell>
+                        <TableCell>{mlScore}</TableCell>
+                        <TableCell className="max-w-[320px] truncate" title={mlReason}>
+                          {mlReason}
+                        </TableCell>
+                        <TableCell>{row.amount}</TableCell>
+                        <TableCell>{new Date(row.timestamp).toLocaleString()}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
 
-        {!loading && !error && rows.length > 0 ? (
-          <>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Flagged</th>
-                  <th>ML Score</th>
-                  <th>ML Reason</th>
-                  <th>Amount</th>
-                  <th>Timestamp</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const mlScore = typeof row.ml_score === "number" ? row.ml_score.toFixed(4) : "-";
-                  const mlReason = row.ml_reason ?? "No anomaly detected or detector not trained";
-
-                  return (
-                  <tr key={row.transaction_id}>
-                    <td><Link to={`/transactions/${row.transaction_id}`}>{row.transaction_id.slice(0, 12)}...</Link></td>
-                    <td>{row.transaction_type}</td>
-                    <td>{row.tx_status}</td>
-                    <td>{row.is_flagged ? "Yes" : "No"}</td>
-                    <td>{mlScore}</td>
-                    <td title={mlReason}>{mlReason}</td>
-                    <td>{row.amount}</td>
-                    <td>{new Date(row.timestamp).toLocaleString()}</td>
-                  </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            {pagination ? (
-              <div className="pagination-bar">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  disabled={!pagination.has_prev}
-                  onClick={() => void loadTransactions(pagination.page - 1)}
-                >
-                  Previous
-                </button>
-                <span>
-                  Page {pagination.page} / {pagination.total_pages} (total {pagination.total})
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  disabled={!pagination.has_next}
-                  onClick={() => void loadTransactions(pagination.page + 1)}
-                >
-                  Next
-                </button>
-              </div>
-            ) : null}
-          </>
-        ) : null}
-      </section>
-    </section>
+              {pagination ? (
+                <PaginationBar
+                  page={pagination.page}
+                  totalPages={pagination.total_pages}
+                  total={pagination.total}
+                  hasPrevious={pagination.has_prev}
+                  hasNext={pagination.has_next}
+                  onPrevious={() => void loadTransactions(pagination.page - 1)}
+                  onNext={() => void loadTransactions(pagination.page + 1)}
+                />
+              ) : null}
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
+    </PageShell>
   );
 }

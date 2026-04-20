@@ -1,14 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
+import { PageShell } from "../../../components/common/PageShell";
+import { PaginationBar } from "../../../components/common/PaginationBar";
 import { EmptyState } from "../../../components/states/EmptyState";
 import { ErrorState } from "../../../components/states/ErrorState";
 import { LoadingState } from "../../../components/states/LoadingState";
+import { Button } from "../../../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Input } from "../../../components/ui/input";
+import { Label } from "../../../components/ui/label";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table";
 import { normalizeApiError, walletsService } from "../../../services";
 import { useAuthStore } from "../../../stores/authStore";
 import type { PaginationMeta } from "../../../types/api";
 import type { WalletDetailPayload, WalletListPayload } from "../../../types/wallets";
-import "../../../styles/pages/wallets.css";
 
 export function WalletsPage() {
   const role = useAuthStore((state) => state.user?.role);
@@ -87,98 +93,139 @@ export function WalletsPage() {
   }
 
   return (
-    <section className="page-panel page-wallets">
-      <h1>Wallets</h1>
-
-      <section>
-        <h2>Create wallet</h2>
-        <form className="form" onSubmit={(event) => void onCreateWallet(event)}>
-          <label className="field">
-            <span>Wallet name</span>
-            <input value={walletName} onChange={(event) => setWalletName(event.target.value)} required minLength={2} />
-          </label>
-
-          {canAssignToUser ? (
-            <label className="field">
-              <span>Assign to user (optional)</span>
-              <input value={assignToUser} onChange={(event) => setAssignToUser(event.target.value)} />
-            </label>
-          ) : null}
-
-          <button type="submit" className="btn btn-primary" disabled={createLoading}>
-            {createLoading ? "Creating..." : "Create wallet"}
-          </button>
-        </form>
-        {createError ? <ErrorState title="Create wallet failed" message={createError} /> : null}
-      </section>
-
-      <section>
-        <h2>Wallet list</h2>
-        {!wallets || wallets.wallets.length === 0 ? (
-          <EmptyState message="No wallets available." />
-        ) : (
-          <>
-            <table className="data-table">
-              <thead><tr><th>Name</th><th>Address</th><th>Created</th><th>Action</th></tr></thead>
-              <tbody>
-                {wallets.wallets.map((wallet) => (
-                  <tr key={wallet.name}>
-                    <td>{wallet.name}</td>
-                    <td>{wallet.address.slice(0, 16)}...</td>
-                    <td>{new Date(wallet.created_at).toLocaleString()}</td>
-                    <td><button type="button" className="btn btn-secondary" onClick={() => void loadDetail(wallet.name)}>Details</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {pagination ? (
-              <div className="pagination-bar">
-                <button type="button" className="btn btn-secondary" disabled={!pagination.has_prev} onClick={() => void loadWallets(pagination.page - 1)}>Previous</button>
-                <span>Page {pagination.page}/{pagination.total_pages}</span>
-                <button type="button" className="btn btn-secondary" disabled={!pagination.has_next} onClick={() => void loadWallets(pagination.page + 1)}>Next</button>
-              </div>
-            ) : null}
-          </>
-        )}
-      </section>
-
-      <section>
-        <h2>Selected wallet details</h2>
-        {detailLoading ? <LoadingState message="Loading wallet details..." /> : null}
-        {detailError ? <ErrorState message={detailError} /> : null}
-        {!detailLoading && !detailError && !detail ? <EmptyState message="Select a wallet to inspect transactions." /> : null}
-
-        {detail ? (
-          <>
-            <div className="state-card">
-              <p><strong>Name:</strong> {detail.wallet.name}</p>
-              <p><strong>Address:</strong> {detail.wallet.address}</p>
-              <p><strong>Transactions indexed:</strong> {detail.transaction_count}</p>
+    <PageShell title="Wallets" description="Manage wallets and inspect indexed transactions per wallet.">
+      <Card>
+        <CardHeader>
+          <CardTitle>Create wallet</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form className="space-y-4" onSubmit={(event) => void onCreateWallet(event)}>
+            <div className="grid gap-2">
+              <Label htmlFor="walletName">Wallet name</Label>
+              <Input
+                id="walletName"
+                value={walletName}
+                onChange={(event) => setWalletName(event.target.value)}
+                required
+                minLength={2}
+              />
             </div>
 
-            {detail.transactions.length === 0 ? (
-              <EmptyState message="No indexed transactions for this wallet." />
-            ) : (
-              <table className="data-table">
-                <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Amount</th><th>Timestamp</th></tr></thead>
-                <tbody>
-                  {detail.transactions.map((tx) => (
-                    <tr key={tx.transaction_id}>
-                      <td>{tx.transaction_id.slice(0, 12)}...</td>
-                      <td>{tx.transaction_type}</td>
-                      <td>{tx.tx_status}</td>
-                      <td>{tx.amount}</td>
-                      <td>{new Date(tx.timestamp).toLocaleString()}</td>
-                    </tr>
+            {canAssignToUser ? (
+              <div className="grid gap-2">
+                <Label htmlFor="assignToUser">Assign to user (optional)</Label>
+                <Input id="assignToUser" value={assignToUser} onChange={(event) => setAssignToUser(event.target.value)} />
+              </div>
+            ) : null}
+
+            <Button type="submit" disabled={createLoading}>
+              {createLoading ? "Creating..." : "Create wallet"}
+            </Button>
+          </form>
+          {createError ? <ErrorState title="Create wallet failed" message={createError} /> : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Wallet list</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!wallets || wallets.wallets.length === 0 ? (
+            <EmptyState message="No wallets available." />
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Address</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead>Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {wallets.wallets.map((wallet) => (
+                    <TableRow key={wallet.name}>
+                      <TableCell>{wallet.name}</TableCell>
+                      <TableCell>{wallet.address.slice(0, 16)}...</TableCell>
+                      <TableCell>{new Date(wallet.created_at).toLocaleString()}</TableCell>
+                      <TableCell>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void loadDetail(wallet.name)}>
+                          Details
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
-            )}
-          </>
-        ) : null}
-      </section>
-    </section>
+                </TableBody>
+              </Table>
+
+              {pagination ? (
+                <PaginationBar
+                  page={pagination.page}
+                  totalPages={pagination.total_pages}
+                  total={pagination.total}
+                  hasPrevious={pagination.has_prev}
+                  hasNext={pagination.has_next}
+                  onPrevious={() => void loadWallets(pagination.page - 1)}
+                  onNext={() => void loadWallets(pagination.page + 1)}
+                />
+              ) : null}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Selected wallet details</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {detailLoading ? <LoadingState message="Loading wallet details..." /> : null}
+          {detailError ? <ErrorState message={detailError} /> : null}
+          {!detailLoading && !detailError && !detail ? <EmptyState message="Select a wallet to inspect transactions." /> : null}
+
+          {detail ? (
+            <>
+              <Card>
+                <CardContent className="space-y-2 pt-6 text-sm">
+                  <p><strong>Name:</strong> {detail.wallet.name}</p>
+                  <p><strong>Address:</strong> {detail.wallet.address}</p>
+                  <p><strong>Transactions indexed:</strong> {detail.transaction_count}</p>
+                </CardContent>
+              </Card>
+
+              {detail.transactions.length === 0 ? (
+                <EmptyState message="No indexed transactions for this wallet." />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>ID</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Timestamp</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {detail.transactions.map((tx) => (
+                      <TableRow key={tx.transaction_id}>
+                        <TableCell>{tx.transaction_id.slice(0, 12)}...</TableCell>
+                        <TableCell>{tx.transaction_type}</TableCell>
+                        <TableCell>{tx.tx_status}</TableCell>
+                        <TableCell>{tx.amount}</TableCell>
+                        <TableCell>{new Date(tx.timestamp).toLocaleString()}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
+    </PageShell>
   );
 }
 

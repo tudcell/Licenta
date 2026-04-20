@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
+import { PageShell } from "../../../components/common/PageShell";
 import { EmptyState } from "../../../components/states/EmptyState";
 import { ErrorState } from "../../../components/states/ErrorState";
 import { LoadingState } from "../../../components/states/LoadingState";
+import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Input } from "../../../components/ui/input";
+import { Label } from "../../../components/ui/label";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table";
 import { auditService, normalizeApiError } from "../../../services";
 import type { BackupCreatePayload, BackupRestorePayload, IntegrityPayload, SnapshotRecord } from "../../../types/audit";
-import "../../../styles/pages/audit.css";
 
 export function AuditPage() {
   const [integrity, setIntegrity] = useState<IntegrityPayload | null>(null);
@@ -123,84 +129,94 @@ export function AuditPage() {
   }
 
   return (
-    <section className="page-panel page-audit">
-      <h1>Audit</h1>
+    <PageShell title="Audit" description="Integrity checks, backup lifecycle, and export operations.">
+      <Card>
+        <CardHeader><CardTitle>Integrity</CardTitle></CardHeader>
+        <CardContent>
+          {integrity ? (
+            <div className="space-y-2 text-sm">
+              <p><strong>Chain valid:</strong> <Badge variant={integrity.chain_valid ? "secondary" : "destructive"}>{integrity.chain_valid ? "Yes" : "No"}</Badge></p>
+              <p><strong>Total blocks:</strong> {integrity.total_blocks}</p>
+              <p><strong>Total transactions:</strong> {integrity.total_transactions}</p>
+              {integrity.error ? <p><strong>Error:</strong> {integrity.error}</p> : null}
+            </div>
+          ) : (
+            <EmptyState message="No integrity data available." />
+          )}
+        </CardContent>
+      </Card>
 
-      <section>
-        <h2>Integrity</h2>
-        {integrity ? (
-          <div className="state-card">
-            <p><strong>Chain valid:</strong> {integrity.chain_valid ? "Yes" : "No"}</p>
-            <p><strong>Total blocks:</strong> {integrity.total_blocks}</p>
-            <p><strong>Total transactions:</strong> {integrity.total_transactions}</p>
-            {integrity.error ? <p><strong>Error:</strong> {integrity.error}</p> : null}
+      <Card>
+        <CardHeader><CardTitle>Actions</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" disabled={actionLoading} onClick={() => void load()}>Refresh</Button>
+            <Button type="button" disabled={actionLoading} onClick={() => void onCreateBackup()}>Create backup</Button>
+            <Button type="button" variant="outline" disabled={actionLoading} onClick={() => void onExportAudit()}>Export audit log</Button>
           </div>
-        ) : (
-          <EmptyState message="No integrity data available." />
-        )}
-      </section>
+          {actionError ? <ErrorState message={actionError} /> : null}
+          {lastCreated ? (
+            <Card>
+              <CardContent className="space-y-2 pt-6 text-sm">
+                <p><strong>Backup created:</strong> {lastCreated.snapshot_name}</p>
+                {lastCreated.pruned_snapshots.length > 0 ? <p><strong>Pruned:</strong> {lastCreated.pruned_snapshots.join(", ")}</p> : null}
+              </CardContent>
+            </Card>
+          ) : null}
+        </CardContent>
+      </Card>
 
-      <section>
-        <h2>Actions</h2>
-        <div className="quick-actions">
-          <button type="button" className="btn btn-secondary" disabled={actionLoading} onClick={() => void load()}>Refresh</button>
-          <button type="button" className="btn btn-primary" disabled={actionLoading} onClick={() => void onCreateBackup()}>Create backup</button>
-          <button type="button" className="btn btn-secondary" disabled={actionLoading} onClick={() => void onExportAudit()}>Export audit log</button>
-        </div>
-        {actionError ? <ErrorState message={actionError} /> : null}
-        {lastCreated ? (
-          <div className="state-card">
-            <p><strong>Backup created:</strong> {lastCreated.snapshot_name}</p>
-            {lastCreated.pruned_snapshots.length > 0 ? <p><strong>Pruned:</strong> {lastCreated.pruned_snapshots.join(", ")}</p> : null}
-          </div>
-        ) : null}
-      </section>
+      <Card>
+        <CardHeader><CardTitle>Restore backup</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <form className="space-y-3" onSubmit={(event) => void onRestore(event)}>
+            <div className="grid gap-2">
+              <Label htmlFor="snapshotName">Snapshot name</Label>
+              <Input id="snapshotName" value={restoreName} onChange={(event) => setRestoreName(event.target.value)} placeholder="snapshot_...zip" required />
+            </div>
+            <Button type="submit" variant="destructive" disabled={actionLoading}>
+              {actionLoading ? "Restoring..." : "Restore snapshot"}
+            </Button>
+          </form>
+          {lastRestore ? (
+            <Card>
+              <CardContent className="space-y-2 pt-6 text-sm">
+                <p><strong>Restored:</strong> {lastRestore.restored_snapshot}</p>
+                <p><strong>Components:</strong> {lastRestore.restored_components.join(", ")}</p>
+                <p><strong>Restart required:</strong> {lastRestore.restart_required ? "Yes" : "No"}</p>
+              </CardContent>
+            </Card>
+          ) : null}
+        </CardContent>
+      </Card>
 
-      <section>
-        <h2>Restore backup</h2>
-        <form className="form" onSubmit={(event) => void onRestore(event)}>
-          <label className="field">
-            <span>Snapshot name</span>
-            <input value={restoreName} onChange={(event) => setRestoreName(event.target.value)} placeholder="snapshot_...zip" required />
-          </label>
-          <button type="submit" className="btn btn-danger" disabled={actionLoading}>
-            {actionLoading ? "Restoring..." : "Restore snapshot"}
-          </button>
-        </form>
-        {lastRestore ? (
-          <div className="state-card">
-            <p><strong>Restored:</strong> {lastRestore.restored_snapshot}</p>
-            <p><strong>Components:</strong> {lastRestore.restored_components.join(", ")}</p>
-            <p><strong>Restart required:</strong> {lastRestore.restart_required ? "Yes" : "No"}</p>
-          </div>
-        ) : null}
-      </section>
-
-      <section>
-        <h2>Snapshots</h2>
-        {snapshots.length === 0 ? (
-          <EmptyState message="No snapshots available." />
-        ) : (
-          <table className="data-table">
-            <thead><tr><th>Name</th><th>Size (bytes)</th><th>Modified</th><th>Action</th></tr></thead>
-            <tbody>
-              {snapshots.map((snapshot) => (
-                <tr key={snapshot.name}>
-                  <td>{snapshot.name}</td>
-                  <td>{snapshot.size_bytes}</td>
-                  <td>{new Date(snapshot.modified_at).toLocaleString()}</td>
-                  <td>
-                    <button type="button" className="btn btn-secondary" disabled={actionLoading} onClick={() => void onDownloadBackup(snapshot.name)}>
-                      Download
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-    </section>
+      <Card>
+        <CardHeader><CardTitle>Snapshots</CardTitle></CardHeader>
+        <CardContent>
+          {snapshots.length === 0 ? (
+            <EmptyState message="No snapshots available." />
+          ) : (
+            <Table>
+              <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Size (bytes)</TableHead><TableHead>Modified</TableHead><TableHead>Action</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {snapshots.map((snapshot) => (
+                  <TableRow key={snapshot.name}>
+                    <TableCell>{snapshot.name}</TableCell>
+                    <TableCell>{snapshot.size_bytes}</TableCell>
+                    <TableCell>{new Date(snapshot.modified_at).toLocaleString()}</TableCell>
+                    <TableCell>
+                      <Button type="button" variant="outline" size="sm" disabled={actionLoading} onClick={() => void onDownloadBackup(snapshot.name)}>
+                        Download
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </PageShell>
   );
 }
 

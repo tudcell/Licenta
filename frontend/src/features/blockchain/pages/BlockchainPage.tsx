@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { PageShell } from "../../../components/common/PageShell";
+import { PaginationBar } from "../../../components/common/PaginationBar";
 import { EmptyState } from "../../../components/states/EmptyState";
 import { ErrorState } from "../../../components/states/ErrorState";
 import { LoadingState } from "../../../components/states/LoadingState";
+import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table";
 import { blockchainService, normalizeApiError } from "../../../services";
 import { useAuthStore } from "../../../stores/authStore";
 import type { PaginationMeta } from "../../../types/api";
 import type { BlockchainListPayload, BlockchainStats, BlockchainValidation, MempoolPayload } from "../../../types/blockchain";
-import "../../../styles/pages/blockchain.css";
 
 export function BlockchainPage() {
   const role = useAuthStore((state) => state.user?.role);
@@ -91,91 +96,105 @@ export function BlockchainPage() {
   }
 
   return (
-    <section className="page-panel page-blockchain">
-      <h1>Blockchain</h1>
-
-      <div className="kpi-grid">
-        <article className="kpi-card"><h3>Height</h3><strong>{stats.height}</strong></article>
-        <article className="kpi-card"><h3>Total Blocks</h3><strong>{stats.total_blocks}</strong></article>
-        <article className="kpi-card"><h3>Total Tx</h3><strong>{stats.total_transactions}</strong></article>
-        <article className="kpi-card"><h3>Mempool</h3><strong>{stats.mempool_size}</strong></article>
+    <PageShell title="Blockchain" description="Chain status, validation, mining, and mempool visibility.">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Height</CardTitle></CardHeader><CardContent><p className="text-3xl font-semibold">{stats.height}</p></CardContent></Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total Blocks</CardTitle></CardHeader><CardContent><p className="text-3xl font-semibold">{stats.total_blocks}</p></CardContent></Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total Tx</CardTitle></CardHeader><CardContent><p className="text-3xl font-semibold">{stats.total_transactions}</p></CardContent></Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Mempool</CardTitle></CardHeader><CardContent><p className="text-3xl font-semibold">{stats.mempool_size}</p></CardContent></Card>
       </div>
 
-      <div className="quick-actions">
-        <button type="button" className="btn btn-secondary" onClick={onValidate} disabled={actionLoading}>Validate chain</button>
-        <button type="button" className="btn btn-primary" onClick={onMine} disabled={actionLoading || !canMine}>Mine block</button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" onClick={onValidate} disabled={actionLoading}>Validate chain</Button>
+        <Button type="button" onClick={onMine} disabled={actionLoading || !canMine}>Mine block</Button>
       </div>
 
       {validateResult ? (
-        <div className="state-card">
-          <h3>Validation result</h3>
-          <p>Valid: {validateResult.is_valid ? "Yes" : "No"}</p>
-          {validateResult.error ? <p>Error: {validateResult.error}</p> : null}
-        </div>
+        <Card>
+          <CardHeader><CardTitle>Validation result</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p>
+              Valid: <Badge variant={validateResult.is_valid ? "secondary" : "destructive"}>{validateResult.is_valid ? "Yes" : "No"}</Badge>
+            </p>
+            {validateResult.error ? <p>Error: {validateResult.error}</p> : null}
+          </CardContent>
+        </Card>
       ) : null}
       {actionError ? <ErrorState message={actionError} /> : null}
 
-      <section>
-        <h2>Blocks</h2>
-        {chain.chain.length === 0 ? (
-          <EmptyState message="No blocks found." />
-        ) : (
-          <>
-            <table className="data-table">
-              <thead><tr><th>Index</th><th>Hash</th><th>Previous</th><th>Tx</th><th>Timestamp</th></tr></thead>
-              <tbody>
-                {chain.chain.map((block) => (
-                  <tr key={block.index}>
-                    <td><Link to={`/blockchain/${block.index}`}>{block.index}</Link></td>
-                    <td>{block.block_hash.slice(0, 12)}...</td>
-                    <td>{block.previous_hash.slice(0, 12)}...</td>
-                    <td>{block.transactions.length}</td>
-                    <td>{new Date(block.timestamp).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {chainPagination ? (
-              <div className="pagination-bar">
-                <button className="btn btn-secondary" disabled={!chainPagination.has_prev} onClick={() => void load(chainPagination.page - 1, mempoolPagination?.page ?? 1)}>Previous</button>
-                <span>Page {chainPagination.page}/{chainPagination.total_pages}</span>
-                <button className="btn btn-secondary" disabled={!chainPagination.has_next} onClick={() => void load(chainPagination.page + 1, mempoolPagination?.page ?? 1)}>Next</button>
-              </div>
-            ) : null}
-          </>
-        )}
-      </section>
+      <Card>
+        <CardHeader><CardTitle>Blocks</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          {chain.chain.length === 0 ? (
+            <EmptyState message="No blocks found." />
+          ) : (
+            <>
+              <Table>
+                <TableHeader><TableRow><TableHead>Index</TableHead><TableHead>Hash</TableHead><TableHead>Previous</TableHead><TableHead>Tx</TableHead><TableHead>Timestamp</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {chain.chain.map((block) => (
+                    <TableRow key={block.index}>
+                      <TableCell><Link className="font-medium text-primary hover:underline" to={`/blockchain/${block.index}`}>{block.index}</Link></TableCell>
+                      <TableCell>{block.block_hash.slice(0, 12)}...</TableCell>
+                      <TableCell>{block.previous_hash.slice(0, 12)}...</TableCell>
+                      <TableCell>{block.transactions.length}</TableCell>
+                      <TableCell>{new Date(block.timestamp).toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {chainPagination ? (
+                <PaginationBar
+                  page={chainPagination.page}
+                  totalPages={chainPagination.total_pages}
+                  total={chainPagination.total}
+                  hasPrevious={chainPagination.has_prev}
+                  hasNext={chainPagination.has_next}
+                  onPrevious={() => void load(chainPagination.page - 1, mempoolPagination?.page ?? 1)}
+                  onNext={() => void load(chainPagination.page + 1, mempoolPagination?.page ?? 1)}
+                />
+              ) : null}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
-      <section>
-        <h2>Mempool</h2>
-        {mempool.transactions.length === 0 ? (
-          <EmptyState message="No pending transactions in mempool." />
-        ) : (
-          <>
-            <table className="data-table">
-              <thead><tr><th>ID</th><th>Type</th><th>Sender</th><th>Timestamp</th></tr></thead>
-              <tbody>
-                {mempool.transactions.map((tx) => (
-                  <tr key={tx.transaction_id}>
-                    <td><Link to={`/transactions/${tx.transaction_id}`}>{tx.transaction_id.slice(0, 12)}...</Link></td>
-                    <td>{tx.transaction_type}</td>
-                    <td>{tx.sender_address.slice(0, 12)}...</td>
-                    <td>{new Date(tx.timestamp).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {mempoolPagination ? (
-              <div className="pagination-bar">
-                <button className="btn btn-secondary" disabled={!mempoolPagination.has_prev} onClick={() => void load(chainPagination?.page ?? 1, mempoolPagination.page - 1)}>Previous</button>
-                <span>Page {mempoolPagination.page}/{mempoolPagination.total_pages}</span>
-                <button className="btn btn-secondary" disabled={!mempoolPagination.has_next} onClick={() => void load(chainPagination?.page ?? 1, mempoolPagination.page + 1)}>Next</button>
-              </div>
-            ) : null}
-          </>
-        )}
-      </section>
-    </section>
+      <Card>
+        <CardHeader><CardTitle>Mempool</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          {mempool.transactions.length === 0 ? (
+            <EmptyState message="No pending transactions in mempool." />
+          ) : (
+            <>
+              <Table>
+                <TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Type</TableHead><TableHead>Sender</TableHead><TableHead>Timestamp</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {mempool.transactions.map((tx) => (
+                    <TableRow key={tx.transaction_id}>
+                      <TableCell><Link className="font-medium text-primary hover:underline" to={`/transactions/${tx.transaction_id}`}>{tx.transaction_id.slice(0, 12)}...</Link></TableCell>
+                      <TableCell>{tx.transaction_type}</TableCell>
+                      <TableCell>{tx.sender_address.slice(0, 12)}...</TableCell>
+                      <TableCell>{new Date(tx.timestamp).toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {mempoolPagination ? (
+                <PaginationBar
+                  page={mempoolPagination.page}
+                  totalPages={mempoolPagination.total_pages}
+                  total={mempoolPagination.total}
+                  hasPrevious={mempoolPagination.has_prev}
+                  hasNext={mempoolPagination.has_next}
+                  onPrevious={() => void load(chainPagination?.page ?? 1, mempoolPagination.page - 1)}
+                  onNext={() => void load(chainPagination?.page ?? 1, mempoolPagination.page + 1)}
+                />
+              ) : null}
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </PageShell>
   );
 }
 
