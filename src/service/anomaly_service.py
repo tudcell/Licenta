@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, Tuple
 
 from src.repository.analyzer_repository import AnalyzerRepository
@@ -179,5 +180,51 @@ class AnomalyService:
             "invalid_signatures": invalid_signature_count,
         }
         return data, f"{len(combined)} transactions generated ({flagged_count} flagged for review)"
+
+    def retrain_detector(self, role: str) -> Tuple[dict, str]:
+        if role not in ("admin", "operator"):
+            raise ServiceError("Access forbidden. Required: admin, operator", status_code=403, error_code="FORBIDDEN")
+
+        window_size = 2000
+        indexed_rows, _ = self.metadata_repository.search_transactions(
+            flagged=False,
+            page=1,
+            per_page=window_size,
+        )
+
+        chain_transactions = self.blockchain_repository.get_all_transactions()
+        mempool_transactions = self.blockchain_repository.get_mempool_transactions()
+        tx_by_id = {tx.transaction_id: tx for tx in chain_transactions}
+        tx_by_id.update({tx.transaction_id: tx for tx in mempool_transactions})
+
+        ordered_transactions = []
+        for row in indexed_rows:
+            tx = tx_by_id.get(str(row.get("transaction_id")))
+            if tx:
+                ordered_transactions.append(tx)
+
+        clean_transactions = self.analyzer_repository.get_clean_training_transactions(ordered_transactions)
+        min_samples = self.analyzer_repository.min_training_samples
+        if len(clean_transactions) < min_samples:
+            raise ServiceError(
+                f"At least {min_samples} clean transactions required for retraining (have {len(clean_transactions)})",
+                status_code=400,
+                error_code="INSUFFICIENT_DATA",
+            )
+
+        self.analyzer_repository.detector.fit(clean_transactions)
+        model_path = os.environ.get("ML_MODEL_PATH", os.path.join(os.environ.get("DATA_DIR", "data"), "ml_model.pkl"))
+        self.model_repository.save_detector(self.analyzer_repository.detector, model_path)
+
+        return {
+            "training_mode": "sliding_window_retrain",
+            "window_size": window_size,
+            "indexed_non_flagged": len(indexed_rows),
+            "matched_transactions": len(ordered_transactions),
+            "training_samples": len(clean_transactions),
+            "stats": self.analyzer_repository.detector.training_stats,
+            "model_saved": model_path,
+            "detector_fitted": self.analyzer_repository.detector.is_fitted,
+        }, f"Detector retrained with {len(clean_transactions)} clean recent transactions"
 
 

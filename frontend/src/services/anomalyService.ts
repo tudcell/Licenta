@@ -5,6 +5,7 @@ import type {
   AnomalyStatsPayload,
   DemoGeneratePayload,
   DemoGenerateResult,
+  RetrainDetectorResult,
   TrainDetectorPayload,
   TrainDetectorResult,
 } from "../types/anomaly";
@@ -17,6 +18,11 @@ export const anomalyService = {
 
   async train(payload: TrainDetectorPayload): Promise<TrainDetectorResult> {
     const response = await apiClient.post<ApiSuccess<TrainDetectorResult>>("/api/anomaly/train", payload);
+    return unwrapApiData(response);
+  },
+
+  async retrain(): Promise<RetrainDetectorResult> {
+    const response = await apiClient.post<ApiSuccess<RetrainDetectorResult>>("/api/anomaly/retrain");
     return unwrapApiData(response);
   },
 

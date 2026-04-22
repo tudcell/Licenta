@@ -41,7 +41,8 @@ class TransactionIngestionService:
         if signature_valid:
             added_to_mempool = self.blockchain.add_transaction(transaction)
 
-        self.state.append_history(transaction)
+        if signature_valid and added_to_mempool:
+            self.state.append_history(transaction)
 
         report = AuditReport(
             transaction_id=transaction.transaction_id,

@@ -36,6 +36,20 @@ def train_detector():
         return api_error(exc.message, exc.status_code, errors=exc.errors, error_code=exc.error_code, data=exc.data)
 
 
+@anomaly_bp.route("/anomaly/retrain", methods=["POST"])
+@rate_limit(limit=5, window_seconds=60, scope='anomaly_retrain')
+@jwt_required()
+def retrain_detector():
+    app_ctx = get_app_ctx()
+    try:
+        data, message = app_ctx.anomaly_service.retrain_detector(
+            role=get_jwt().get("role", "viewer"),
+        )
+        return api_success(data=data, message=message)
+    except ServiceError as exc:
+        return api_error(exc.message, exc.status_code, errors=exc.errors, error_code=exc.error_code, data=exc.data)
+
+
 @anomaly_bp.route("/anomaly/stats", methods=["GET"])
 @jwt_required()
 def get_anomaly_stats():

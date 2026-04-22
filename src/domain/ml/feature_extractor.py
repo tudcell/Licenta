@@ -4,8 +4,9 @@ Transforms transactions into stable numerical vectors for anomaly detection.
 """
 
 import numpy as np
-from typing import List, Dict, Any, Tuple
-from datetime import datetime, timedelta
+from collections import defaultdict, deque
+from typing import List, Dict, Any, Tuple, Optional, Deque
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 
 from src.domain.entities.transaction import Transaction, TransactionType
@@ -42,8 +43,14 @@ class TransactionFeatures:
     # Behavioral features
     sender_tx_count_last_hour: int
     sender_tx_count_last_day: int
+    sender_amount_sum_last_hour: float
+    sender_amount_sum_last_day: float
     sender_tx_count_last_hour_log: float
     sender_tx_count_last_day_log: float
+    activity_spike_ratio: float
+    receiver_tx_count_last_hour: int
+    receiver_tx_count_last_day: int
+    receiver_amount_sum_last_day: float
     has_prior_tx: int
     time_since_last_tx: float
     time_since_last_tx_log: float
@@ -70,6 +77,12 @@ class TransactionFeatures:
             self.amount_log,
             self.sender_tx_count_last_hour_log,
             self.sender_tx_count_last_day_log,
+            self.sender_amount_sum_last_hour,
+            self.sender_amount_sum_last_day,
+            self.activity_spike_ratio,
+            self.receiver_tx_count_last_hour,
+            self.receiver_tx_count_last_day,
+            self.receiver_amount_sum_last_day,
             self.has_prior_tx,
             self.time_since_last_tx_log,
             self.is_high_amount,
@@ -95,6 +108,12 @@ class TransactionFeatures:
             'amount_log',
             'sender_tx_count_last_hour_log',
             'sender_tx_count_last_day_log',
+            'sender_amount_sum_last_hour',
+            'sender_amount_sum_last_day',
+            'activity_spike_ratio',
+            'receiver_tx_count_last_hour',
+            'receiver_tx_count_last_day',
+            'receiver_amount_sum_last_day',
             'has_prior_tx',
             'time_since_last_tx_log',
             'is_high_amount',
@@ -123,8 +142,14 @@ class TransactionFeatures:
             'amount_log': round(self.amount_log, 4),
             'sender_tx_count_last_hour': self.sender_tx_count_last_hour,
             'sender_tx_count_last_day': self.sender_tx_count_last_day,
+            'sender_amount_sum_last_hour': round(self.sender_amount_sum_last_hour, 4),
+            'sender_amount_sum_last_day': round(self.sender_amount_sum_last_day, 4),
             'sender_tx_count_last_hour_log': round(self.sender_tx_count_last_hour_log, 4),
             'sender_tx_count_last_day_log': round(self.sender_tx_count_last_day_log, 4),
+            'activity_spike_ratio': round(self.activity_spike_ratio, 4),
+            'receiver_tx_count_last_hour': self.receiver_tx_count_last_hour,
+            'receiver_tx_count_last_day': self.receiver_tx_count_last_day,
+            'receiver_amount_sum_last_day': round(self.receiver_amount_sum_last_day, 4),
             'has_prior_tx': self.has_prior_tx,
             'time_since_last_tx': round(self.time_since_last_tx, 4),
             'time_since_last_tx_log': round(self.time_since_last_tx_log, 4),
@@ -173,11 +198,136 @@ class FeatureExtractor:
         TransactionType.ACCESS_DENIED,
     }
 
+    @dataclass
+    class _ActorWindowState:
+        hour_events: Deque[Tuple[datetime, float]]
+        day_events: Deque[Tuple[datetime, float]]
+        hour_amount_sum: float = 0.0
+        day_amount_sum: float = 0.0
+
+    def _get_actor_state(self) -> "FeatureExtractor._ActorWindowState":
+        return self._ActorWindowState(hour_events=deque(), day_events=deque())
+
+    def _extract_amount(self, transaction: Transaction) -> float:
+        if transaction.transaction_type != TransactionType.TRANSFER:
+            return 0.0
+        try:
+            return float(transaction.data.get('amount', 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _extract_receiver(self, transaction: Transaction) -> Optional[str]:
+        if transaction.transaction_type != TransactionType.TRANSFER:
+            return None
+        recipient = transaction.data.get('recipient')
+        if isinstance(recipient, str) and recipient.strip():
+            return recipient.strip()
+        return None
+
+    def _evict_windows(self, state: "FeatureExtractor._ActorWindowState", current_time: datetime) -> None:
+        one_hour_ago = current_time - timedelta(hours=1)
+        one_day_ago = current_time - timedelta(days=1)
+
+        while state.hour_events and state.hour_events[0][0] < one_hour_ago:
+            _, old_amount = state.hour_events.popleft()
+            state.hour_amount_sum -= old_amount
+
+        while state.day_events and state.day_events[0][0] < one_day_ago:
+            _, old_amount = state.day_events.popleft()
+            state.day_amount_sum -= old_amount
+
+        state.hour_amount_sum = max(0.0, state.hour_amount_sum)
+        state.day_amount_sum = max(0.0, state.day_amount_sum)
+
+    def _append_event(self, state: "FeatureExtractor._ActorWindowState", event_time: datetime, amount: float) -> None:
+        state.hour_events.append((event_time, amount))
+        state.day_events.append((event_time, amount))
+        state.hour_amount_sum += amount
+        state.day_amount_sum += amount
+
+    def _build_context_from_state(
+        self,
+        transaction: Transaction,
+        tx_time: datetime,
+        sender_states: Dict[str, "FeatureExtractor._ActorWindowState"],
+        receiver_states: Dict[str, "FeatureExtractor._ActorWindowState"],
+        sender_last_tx_time: Dict[str, datetime],
+    ) -> Dict[str, float | int]:
+        sender_address = transaction.sender_address
+        sender_state = sender_states[sender_address]
+        self._evict_windows(sender_state, tx_time)
+
+        sender_tx_count_last_hour = len(sender_state.hour_events)
+        sender_tx_count_last_day = len(sender_state.day_events)
+        sender_amount_sum_last_hour = sender_state.hour_amount_sum
+        sender_amount_sum_last_day = sender_state.day_amount_sum
+
+        daily_avg = sender_tx_count_last_day / 24.0 if sender_tx_count_last_day > 0 else 0.0
+        activity_spike_ratio = float(sender_tx_count_last_hour / daily_avg) if daily_avg > 0 else 0.0
+
+        last_tx_time = sender_last_tx_time.get(sender_address)
+        has_prior_tx = 1 if last_tx_time is not None else 0
+        if last_tx_time is None:
+            time_since_last_tx = 0.0
+            time_since_last_tx_log = 0.0
+        else:
+            time_since_last_tx = max(0.0, (tx_time - last_tx_time).total_seconds())
+            time_since_last_tx_log = float(np.log1p(time_since_last_tx))
+
+        receiver_tx_count_last_hour = 0
+        receiver_tx_count_last_day = 0
+        receiver_amount_sum_last_day = 0.0
+        receiver = self._extract_receiver(transaction)
+        if receiver:
+            receiver_state = receiver_states[receiver]
+            self._evict_windows(receiver_state, tx_time)
+            receiver_tx_count_last_hour = len(receiver_state.hour_events)
+            receiver_tx_count_last_day = len(receiver_state.day_events)
+            receiver_amount_sum_last_day = receiver_state.day_amount_sum
+
+        return {
+            'sender_tx_count_last_hour': sender_tx_count_last_hour,
+            'sender_tx_count_last_day': sender_tx_count_last_day,
+            'sender_amount_sum_last_hour': sender_amount_sum_last_hour,
+            'sender_amount_sum_last_day': sender_amount_sum_last_day,
+            'activity_spike_ratio': activity_spike_ratio,
+            'receiver_tx_count_last_hour': receiver_tx_count_last_hour,
+            'receiver_tx_count_last_day': receiver_tx_count_last_day,
+            'receiver_amount_sum_last_day': receiver_amount_sum_last_day,
+            'has_prior_tx': has_prior_tx,
+            'time_since_last_tx': time_since_last_tx,
+            'time_since_last_tx_log': time_since_last_tx_log,
+        }
+
+    def _ingest_transaction_state(
+        self,
+        transaction: Transaction,
+        tx_time: datetime,
+        sender_states: Dict[str, "FeatureExtractor._ActorWindowState"],
+        receiver_states: Dict[str, "FeatureExtractor._ActorWindowState"],
+        sender_last_tx_time: Dict[str, datetime],
+    ) -> None:
+        amount = self._extract_amount(transaction)
+        sender_address = transaction.sender_address
+        sender_state = sender_states[sender_address]
+        self._evict_windows(sender_state, tx_time)
+        self._append_event(sender_state, tx_time, amount)
+        sender_last_tx_time[sender_address] = tx_time
+
+        receiver = self._extract_receiver(transaction)
+        if receiver:
+            receiver_state = receiver_states[receiver]
+            self._evict_windows(receiver_state, tx_time)
+            self._append_event(receiver_state, tx_time, amount)
+
     def _parse_timestamp(self, timestamp: str) -> datetime:
         try:
-            return datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            parsed = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
         except Exception:
-            return datetime.utcnow()
+            return datetime.now(timezone.utc)
 
     def _get_transaction_groups(self, transaction: Transaction) -> Tuple[int, int, int, int, int]:
         tx_type = transaction.transaction_type
@@ -208,9 +358,7 @@ class FeatureExtractor:
 
         is_auth_event, is_data_event, is_transfer_event, is_admin_event, is_failure_event = self._get_transaction_groups(transaction)
 
-        amount = 0.0
-        if transaction.transaction_type == TransactionType.TRANSFER:
-            amount = float(transaction.data.get('amount', 0.0) or 0.0)
+        amount = self._extract_amount(transaction)
         amount_log = float(np.log1p(max(amount, 0.0)))
         is_high_amount = 1 if amount > self.HIGH_AMOUNT_THRESHOLD else 0
 
@@ -219,35 +367,36 @@ class FeatureExtractor:
 
         is_failed_attempt = 1 if transaction.transaction_type in self.FAILURE_TYPES else 0
 
-        sender_tx_count_last_hour = 0
-        sender_tx_count_last_day = 0
-        last_tx_time = None
-        sender_address = transaction.sender_address
-        one_hour_ago = tx_time - timedelta(hours=1)
-        one_day_ago = tx_time - timedelta(days=1)
+        sender_states: Dict[str, FeatureExtractor._ActorWindowState] = defaultdict(self._get_actor_state)
+        receiver_states: Dict[str, FeatureExtractor._ActorWindowState] = defaultdict(self._get_actor_state)
+        sender_last_tx_time: Dict[str, datetime] = {}
 
-        for hist_tx in historical_transactions:
-            if hist_tx.sender_address != sender_address:
-                continue
-
+        sorted_history = sorted(historical_transactions, key=lambda tx: self._parse_timestamp(tx.timestamp))
+        for hist_tx in sorted_history:
             hist_time = self._parse_timestamp(hist_tx.timestamp)
             if hist_time > tx_time:
                 continue
+            self._ingest_transaction_state(hist_tx, hist_time, sender_states, receiver_states, sender_last_tx_time)
 
-            if hist_time >= one_hour_ago:
-                sender_tx_count_last_hour += 1
-            if hist_time >= one_day_ago:
-                sender_tx_count_last_day += 1
-            if last_tx_time is None or hist_time > last_tx_time:
-                last_tx_time = hist_time
+        context = self._build_context_from_state(
+            transaction,
+            tx_time,
+            sender_states,
+            receiver_states,
+            sender_last_tx_time,
+        )
 
-        has_prior_tx = 1 if last_tx_time is not None else 0
-        if last_tx_time is None:
-            time_since_last_tx = 0.0
-            time_since_last_tx_log = 0.0
-        else:
-            time_since_last_tx = max(0.0, (tx_time - last_tx_time).total_seconds())
-            time_since_last_tx_log = float(np.log1p(time_since_last_tx))
+        sender_tx_count_last_hour = int(context['sender_tx_count_last_hour'])
+        sender_tx_count_last_day = int(context['sender_tx_count_last_day'])
+        sender_amount_sum_last_hour = float(context['sender_amount_sum_last_hour'])
+        sender_amount_sum_last_day = float(context['sender_amount_sum_last_day'])
+        activity_spike_ratio = float(context['activity_spike_ratio'])
+        receiver_tx_count_last_hour = int(context['receiver_tx_count_last_hour'])
+        receiver_tx_count_last_day = int(context['receiver_tx_count_last_day'])
+        receiver_amount_sum_last_day = float(context['receiver_amount_sum_last_day'])
+        has_prior_tx = int(context['has_prior_tx'])
+        time_since_last_tx = float(context['time_since_last_tx'])
+        time_since_last_tx_log = float(context['time_since_last_tx_log'])
 
         sender_tx_count_last_hour_log = float(np.log1p(sender_tx_count_last_hour))
         sender_tx_count_last_day_log = float(np.log1p(sender_tx_count_last_day))
@@ -271,8 +420,14 @@ class FeatureExtractor:
             amount_log=amount_log,
             sender_tx_count_last_hour=sender_tx_count_last_hour,
             sender_tx_count_last_day=sender_tx_count_last_day,
+            sender_amount_sum_last_hour=sender_amount_sum_last_hour,
+            sender_amount_sum_last_day=sender_amount_sum_last_day,
             sender_tx_count_last_hour_log=sender_tx_count_last_hour_log,
             sender_tx_count_last_day_log=sender_tx_count_last_day_log,
+            activity_spike_ratio=activity_spike_ratio,
+            receiver_tx_count_last_hour=receiver_tx_count_last_hour,
+            receiver_tx_count_last_day=receiver_tx_count_last_day,
+            receiver_amount_sum_last_day=receiver_amount_sum_last_day,
             has_prior_tx=has_prior_tx,
             time_since_last_tx=time_since_last_tx,
             time_since_last_tx_log=time_since_last_tx_log,
@@ -286,14 +441,94 @@ class FeatureExtractor:
         if not transactions:
             return np.array([]), []
 
-        sorted_transactions = sorted(transactions, key=lambda tx: tx.timestamp)
+        sorted_transactions = sorted(transactions, key=lambda tx: self._parse_timestamp(tx.timestamp))
         vectors: List[np.ndarray] = []
         transaction_ids: List[str] = []
 
-        for i, tx in enumerate(sorted_transactions):
-            features = self.extract_features(tx, sorted_transactions[:i])
+        sender_states: Dict[str, FeatureExtractor._ActorWindowState] = defaultdict(self._get_actor_state)
+        receiver_states: Dict[str, FeatureExtractor._ActorWindowState] = defaultdict(self._get_actor_state)
+        sender_last_tx_time: Dict[str, datetime] = {}
+
+        for tx in sorted_transactions:
+            tx_time = self._parse_timestamp(tx.timestamp)
+
+            hour_of_day = tx_time.hour
+            day_of_week = tx_time.weekday()
+            hour_sin = float(np.sin(2 * np.pi * hour_of_day / 24.0))
+            hour_cos = float(np.cos(2 * np.pi * hour_of_day / 24.0))
+            day_sin = float(np.sin(2 * np.pi * day_of_week / 7.0))
+            day_cos = float(np.cos(2 * np.pi * day_of_week / 7.0))
+            is_weekend = 1 if day_of_week >= 5 else 0
+            is_night = 1 if hour_of_day < 6 else 0
+
+            is_auth_event, is_data_event, is_transfer_event, is_admin_event, is_failure_event = self._get_transaction_groups(tx)
+            amount = self._extract_amount(tx)
+            amount_log = float(np.log1p(max(amount, 0.0)))
+            is_high_amount = 1 if amount > self.HIGH_AMOUNT_THRESHOLD else 0
+            risk_level = str(tx.metadata.get('risk_level', 'low')).lower()
+            risk_level_encoded = self.RISK_ENCODING.get(risk_level, 0)
+            is_failed_attempt = 1 if tx.transaction_type in self.FAILURE_TYPES else 0
+
+            context = self._build_context_from_state(
+                tx,
+                tx_time,
+                sender_states,
+                receiver_states,
+                sender_last_tx_time,
+            )
+
+            sender_tx_count_last_hour = int(context['sender_tx_count_last_hour'])
+            sender_tx_count_last_day = int(context['sender_tx_count_last_day'])
+            sender_amount_sum_last_hour = float(context['sender_amount_sum_last_hour'])
+            sender_amount_sum_last_day = float(context['sender_amount_sum_last_day'])
+            activity_spike_ratio = float(context['activity_spike_ratio'])
+            receiver_tx_count_last_hour = int(context['receiver_tx_count_last_hour'])
+            receiver_tx_count_last_day = int(context['receiver_tx_count_last_day'])
+            receiver_amount_sum_last_day = float(context['receiver_amount_sum_last_day'])
+            has_prior_tx = int(context['has_prior_tx'])
+            time_since_last_tx = float(context['time_since_last_tx'])
+            time_since_last_tx_log = float(context['time_since_last_tx_log'])
+
+            sender_tx_count_last_hour_log = float(np.log1p(sender_tx_count_last_hour))
+            sender_tx_count_last_day_log = float(np.log1p(sender_tx_count_last_day))
+
+            features = TransactionFeatures(
+                transaction_id=tx.transaction_id,
+                hour_of_day=hour_of_day,
+                day_of_week=day_of_week,
+                hour_sin=hour_sin,
+                hour_cos=hour_cos,
+                day_sin=day_sin,
+                day_cos=day_cos,
+                is_weekend=is_weekend,
+                is_night=is_night,
+                is_auth_event=is_auth_event,
+                is_data_event=is_data_event,
+                is_transfer_event=is_transfer_event,
+                is_admin_event=is_admin_event,
+                is_failure_event=is_failure_event,
+                amount=amount,
+                amount_log=amount_log,
+                sender_tx_count_last_hour=sender_tx_count_last_hour,
+                sender_tx_count_last_day=sender_tx_count_last_day,
+                sender_amount_sum_last_hour=sender_amount_sum_last_hour,
+                sender_amount_sum_last_day=sender_amount_sum_last_day,
+                sender_tx_count_last_hour_log=sender_tx_count_last_hour_log,
+                sender_tx_count_last_day_log=sender_tx_count_last_day_log,
+                activity_spike_ratio=activity_spike_ratio,
+                receiver_tx_count_last_hour=receiver_tx_count_last_hour,
+                receiver_tx_count_last_day=receiver_tx_count_last_day,
+                receiver_amount_sum_last_day=receiver_amount_sum_last_day,
+                has_prior_tx=has_prior_tx,
+                time_since_last_tx=time_since_last_tx,
+                time_since_last_tx_log=time_since_last_tx_log,
+                is_high_amount=is_high_amount,
+                risk_level_encoded=risk_level_encoded,
+                is_failed_attempt=is_failed_attempt,
+            )
             vectors.append(features.to_vector())
             transaction_ids.append(tx.transaction_id)
+            self._ingest_transaction_state(tx, tx_time, sender_states, receiver_states, sender_last_tx_time)
 
         return np.array(vectors, dtype=np.float64), transaction_ids
 
@@ -323,6 +558,12 @@ class FeatureExtractor:
             'amount_log': 'Log-scaled transaction amount.',
             'sender_tx_count_last_hour_log': 'Log-scaled sender activity in the last hour.',
             'sender_tx_count_last_day_log': 'Log-scaled sender activity in the last day.',
+            'sender_amount_sum_last_hour': 'Sender cumulative transfer amount seen in the last hour.',
+            'sender_amount_sum_last_day': 'Sender cumulative transfer amount seen in the last day.',
+            'activity_spike_ratio': 'Sender hourly activity divided by sender daily average activity.',
+            'receiver_tx_count_last_hour': 'Receiver-side activity count in the last hour.',
+            'receiver_tx_count_last_day': 'Receiver-side activity count in the last day.',
+            'receiver_amount_sum_last_day': 'Receiver-side cumulative amount observed in the last day.',
             'has_prior_tx': 'Whether the sender has prior history before this event.',
             'time_since_last_tx_log': 'Log-scaled time gap since the sender\'s last event.',
             'is_high_amount': 'Whether the amount exceeds the configured high threshold.',

@@ -63,6 +63,12 @@ export interface AnomalyResultPayload {
   threshold: number;
   confidence?: number;
   explanation?: string;
+  model_score?: number;
+  rule_penalty?: number;
+  model_is_anomaly?: boolean;
+  hard_rule_triggered?: boolean;
+  hard_rule_reason?: string | null;
+  decision_source?: "model" | "hard_rule" | string;
 }
 
 export interface CreateTransactionPayload {

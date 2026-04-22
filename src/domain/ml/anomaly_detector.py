@@ -27,6 +27,10 @@ class AnomalyResult:
     model_score: float = 0.0
     rule_penalty: float = 0.0
     threshold: float = 0.0
+    model_is_anomaly: bool = False
+    hard_rule_triggered: bool = False
+    hard_rule_reason: Optional[str] = None
+    decision_source: str = "model"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -36,6 +40,10 @@ class AnomalyResult:
             'model_score': float(self.model_score),
             'rule_penalty': float(self.rule_penalty),
             'threshold': float(self.threshold),
+            'model_is_anomaly': bool(self.model_is_anomaly),
+            'hard_rule_triggered': bool(self.hard_rule_triggered),
+            'hard_rule_reason': self.hard_rule_reason,
+            'decision_source': self.decision_source,
             'confidence': float(self.confidence),
             'explanation': self.explanation,
             'timestamp': self.timestamp,
@@ -88,6 +96,15 @@ class AnomalyDetector:
         X_scaled = self.scaler.fit_transform(X)
         self.model.fit(X_scaled)
 
+        amounts = [
+            float(tx.data.get('amount', 0.0) or 0.0) if tx.transaction_type.value == 'TRANSFER' else 0.0
+            for tx in transactions
+        ]
+        self._amount_mean = float(np.mean(amounts)) if amounts else 0.0
+        self._amount_std = float(np.std(amounts)) if amounts else 0.0
+        self._amount_high_threshold = self._amount_mean + (3.0 * self._amount_std)
+        self._amount_very_high_threshold = self._amount_mean + (4.0 * self._amount_std)
+
         train_scores = self.model.score_samples(X_scaled)
         adaptive_percentile = max(1.0, min(10.0, self.contamination * 100.0))
 
@@ -97,6 +114,7 @@ class AnomalyDetector:
         self._score_p5 = float(np.percentile(train_scores, 5))
         self._score_p10 = float(np.percentile(train_scores, 10))
         self._adaptive_threshold = float(np.percentile(train_scores, adaptive_percentile))
+
         # lower score = more anomalous, so taking the maximum keeps the threshold from becoming too strict
         self._effective_threshold = max(self.anomaly_threshold, self._adaptive_threshold)
 
@@ -122,6 +140,12 @@ class AnomalyDetector:
             'anomaly_threshold': self.anomaly_threshold,
             'contamination': self.contamination,
             'trained_at': datetime.now(timezone.utc).isoformat(),
+            'amount_distribution': {
+                'mean': self._amount_mean,
+                'std': self._amount_std,
+                'high_threshold': self._amount_high_threshold,
+                'very_high_threshold': self._amount_very_high_threshold,
+            },
         }
 
         self.is_fitted = True
@@ -130,23 +154,34 @@ class AnomalyDetector:
     def _compute_feature_risk_penalty(self, features: TransactionFeatures) -> float:
         """Applies small, interpretable penalties for known suspicious patterns."""
         penalty = 0.0
+        amount_mean = getattr(self, '_amount_mean', 0.0)
+        amount_std = getattr(self, '_amount_std', 0.0)
+        high_threshold = getattr(self, '_amount_high_threshold', amount_mean + (3.0 * amount_std))
+        very_high_threshold = getattr(self, '_amount_very_high_threshold', amount_mean + (4.0 * amount_std))
 
+        # Basic temporal/event penalties
         if features.is_night:
             penalty += 0.08
         if features.is_weekend:
             penalty += 0.06
         if features.is_failed_attempt:
             penalty += 0.09
-        if features.is_high_amount:
+
+        # Amount penalties
+        if features.amount > high_threshold:
             penalty += 0.07
-            if features.amount > 50000:
-                penalty += 0.06
-            if features.amount > 500000:
+            if features.amount > very_high_threshold:
                 penalty += 0.08
+        elif features.is_high_amount:
+            penalty += 0.03
+
+        # Risk level penalties
         if features.risk_level_encoded >= 2:
             penalty += 0.05
         if features.risk_level_encoded >= 3:
             penalty += 0.07
+
+        # Sender frequency penalties
         if features.sender_tx_count_last_hour > 12:
             penalty += 0.05
         if features.sender_tx_count_last_hour > 30:
@@ -160,13 +195,24 @@ class AnomalyDetector:
         if features.is_admin_event and features.is_night:
             penalty += 0.04
 
-        return penalty
+        # NEW: Burst/Spike penalty
+        if features.activity_spike_ratio > 4.0 and features.sender_tx_count_last_hour > 8:
+            penalty += 0.08
+
+        # NEW: Receiver penalties
+        if features.is_transfer_event:
+            if features.receiver_amount_sum_last_day > 50000.0:
+                penalty += 0.06
+            if features.receiver_tx_count_last_day == 0:
+                penalty += 0.04
+
+        return min(penalty, 1.0)
 
     def _calculate_confidence(self, score: float, threshold: float, score_std: float) -> float:
         """Maps the distance from threshold into a smooth confidence value."""
         std = max(score_std, 1e-6)
         margin = abs(score - threshold) / std
-        return float(1.0 / (1.0 + np.exp(-margin)))
+        return float(1.0 - np.exp(-margin))
 
     def _generate_explanation(
         self,
@@ -176,6 +222,8 @@ class AnomalyDetector:
         rule_penalty: float,
         threshold: float,
         is_anomaly: bool,
+        decision_source: str,
+        hard_rule_reason: Optional[str],
     ) -> str:
         reasons: List[str] = []
 
@@ -197,6 +245,15 @@ class AnomalyDetector:
             risk_names = ['low', 'medium', 'high', 'critical']
             reasons.append(f"risk={risk_names[min(features.risk_level_encoded, 3)]}")
 
+        # NEW: Explanations for new features
+        if features.activity_spike_ratio > 4.0 and features.sender_tx_count_last_hour > 8:
+            reasons.append(f"sudden spike in activity ({features.activity_spike_ratio:.1f}x normal rate)")
+        if features.is_transfer_event:
+            if features.receiver_amount_sum_last_day > 50000.0:
+                reasons.append("recipient accumulated high funds recently")
+            if features.receiver_tx_count_last_day == 0:
+                reasons.append("transfer to a completely new/inactive recipient")
+
         if is_anomaly:
             if not reasons:
                 reasons.append("isolated by the ML baseline")
@@ -206,10 +263,15 @@ class AnomalyDetector:
             if not reasons:
                 reasons.append("within learned user/system baseline")
 
-        return (
+        explanation = (
             f"{prefix}: {'; '.join(reasons)} "
             f"[final={final_score:.3f}, ml={model_score:.3f}, penalty={rule_penalty:.3f}, threshold={threshold:.3f}]"
         )
+        if decision_source == 'hard_rule' and hard_rule_reason:
+            explanation += f" [decision=hard_rule:{hard_rule_reason}]"
+        else:
+            explanation += " [decision=model]"
+        return explanation
 
     def predict(self, transaction: Transaction, historical_transactions: List[Transaction] = None) -> AnomalyResult:
         """Predicts whether a transaction is anomalous using contextual history."""
@@ -224,16 +286,30 @@ class AnomalyDetector:
         rule_penalty = self._compute_feature_risk_penalty(features)
         final_score = model_score - rule_penalty
         threshold = getattr(self, '_effective_threshold', self.anomaly_threshold)
-        is_anomaly = final_score < threshold
+        model_is_anomaly = final_score < threshold
+        is_anomaly = model_is_anomaly
 
-        if (
-            features.sender_tx_count_last_hour > 120
-            or (features.has_prior_tx and 0 <= features.time_since_last_tx < 0.25)
-            or features.amount > 1_000_000
-        ):
+        hard_rule_triggered = False
+        hard_rule_reason = None
+        if features.sender_tx_count_last_hour > 120:
+            hard_rule_triggered = True
+            hard_rule_reason = "hourly_burst"
+        elif features.has_prior_tx and 0 <= features.time_since_last_tx < 0.25:
+            hard_rule_triggered = True
+            hard_rule_reason = "ultra_short_gap"
+        elif features.amount > 1_000_000:
+            hard_rule_triggered = True
+            hard_rule_reason = "extreme_amount"
+
+        if hard_rule_triggered:
             is_anomaly = True
 
+        decision_source = 'hard_rule' if hard_rule_triggered else 'model'
+
         confidence = self._calculate_confidence(final_score, threshold, getattr(self, '_score_std', 0.05))
+        if hard_rule_triggered:
+            confidence = max(confidence, 0.9)
+
         explanation = self._generate_explanation(
             features,
             final_score,
@@ -241,6 +317,8 @@ class AnomalyDetector:
             rule_penalty,
             threshold,
             is_anomaly,
+            decision_source,
+            hard_rule_reason,
         )
 
         return AnomalyResult(
@@ -250,6 +328,10 @@ class AnomalyDetector:
             model_score=model_score,
             rule_penalty=rule_penalty,
             threshold=threshold,
+            model_is_anomaly=model_is_anomaly,
+            hard_rule_triggered=hard_rule_triggered,
+            hard_rule_reason=hard_rule_reason,
+            decision_source=decision_source,
             confidence=confidence,
             features=features,
             explanation=explanation,
@@ -261,7 +343,7 @@ class AnomalyDetector:
             raise RuntimeError("Model must be trained before prediction")
 
         results: List[AnomalyResult] = []
-        sorted_transactions = sorted(transactions, key=lambda tx: tx.timestamp)
+        sorted_transactions = sorted(transactions, key=lambda tx: self.feature_extractor._parse_timestamp(tx.timestamp))
         for i, tx in enumerate(sorted_transactions):
             results.append(self.predict(tx, sorted_transactions[:i]))
         return results
@@ -271,7 +353,10 @@ class AnomalyDetector:
         if len(transactions) != len(labels):
             raise ValueError("transactions and labels must have the same length")
 
-        sorted_pairs = sorted(zip(transactions, labels), key=lambda x: x[0].timestamp)
+        sorted_pairs = sorted(
+            zip(transactions, labels),
+            key=lambda item: self.feature_extractor._parse_timestamp(item[0].timestamp),
+        )
         history: List[Transaction] = []
         results: List[AnomalyResult] = []
         y_true: List[bool] = []
@@ -290,12 +375,14 @@ class AnomalyDetector:
         precision = tp / (tp + fp) if (tp + fp) else 0.0
         recall = tp / (tp + fn) if (tp + fn) else 0.0
         accuracy = (tp + tn) / len(results) if results else 0.0
+        f1_score = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
 
         return {
             'total': len(results),
             'accuracy': accuracy,
             'precision': precision,
             'recall': recall,
+            'f1_score': f1_score,
             'true_positives': tp,
             'true_negatives': tn,
             'false_positives': fp,
@@ -344,6 +431,12 @@ class AnomalyDetector:
                 'adaptive_threshold': getattr(self, '_adaptive_threshold', self.anomaly_threshold),
                 'effective_threshold': getattr(self, '_effective_threshold', self.anomaly_threshold),
             },
+            'amount_stats': {
+                'mean': getattr(self, '_amount_mean', 0.0),
+                'std': getattr(self, '_amount_std', 0.0),
+                'high_threshold': getattr(self, '_amount_high_threshold', 0.0),
+                'very_high_threshold': getattr(self, '_amount_very_high_threshold', 0.0),
+            },
             'config': {
                 'contamination': self.contamination,
                 'n_estimators': self.n_estimators,
@@ -374,6 +467,11 @@ class AnomalyDetector:
             detector._score_p10 = score_stats.get('p10', detector.anomaly_threshold)
             detector._adaptive_threshold = score_stats.get('adaptive_threshold', detector.anomaly_threshold)
             detector._effective_threshold = score_stats.get('effective_threshold', detector._adaptive_threshold)
+            amount_stats = state.get('amount_stats') or detector.training_stats.get('amount_distribution', {})
+            detector._amount_mean = amount_stats.get('mean', 0.0)
+            detector._amount_std = amount_stats.get('std', 0.0)
+            detector._amount_high_threshold = amount_stats.get('high_threshold', detector._amount_mean + (3.0 * detector._amount_std))
+            detector._amount_very_high_threshold = amount_stats.get('very_high_threshold', detector._amount_mean + (4.0 * detector._amount_std))
             return detector
         except Exception as exc:
             import logging
@@ -385,5 +483,3 @@ class AnomalyDetector:
     def __str__(self) -> str:
         status = 'trained' if self.is_fitted else 'untrained'
         return f"AnomalyDetector({status}, contamination={self.contamination})"
-
-

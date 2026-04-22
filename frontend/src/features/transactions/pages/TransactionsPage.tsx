@@ -56,6 +56,23 @@ type TransactionTemplate = {
   metadata: Record<string, unknown>;
 };
 
+function parseDecisionFromMlReason(reason: string | null | undefined): { source: "hard_rule" | "model" | "unknown"; hardRuleReason: string | null } {
+  if (!reason) {
+    return { source: "unknown", hardRuleReason: null };
+  }
+
+  const hardRuleMatch = reason.match(/\[decision=hard_rule:([^\]]+)\]/i);
+  if (hardRuleMatch) {
+    return { source: "hard_rule", hardRuleReason: hardRuleMatch[1] ?? null };
+  }
+
+  if (/\[decision=model\]/i.test(reason)) {
+    return { source: "model", hardRuleReason: null };
+  }
+
+  return { source: "unknown", hardRuleReason: null };
+}
+
 function getTemplateByType(transactionType: string): TransactionTemplate {
   switch (transactionType) {
     case "TRANSFER":
@@ -439,7 +456,7 @@ export function TransactionsPage() {
               </Select>
             </div>
           </div>
-
+        <div className="min-h-[600px]">
           {loading ? <LoadingState message="Loading transactions..." /> : null}
           {error ? <ErrorState message={error} onRetry={() => void loadTransactions(page)} /> : null}
           {!loading && !error && rows.length === 0 ? <EmptyState message="No transactions match current filters." /> : null}
@@ -454,6 +471,8 @@ export function TransactionsPage() {
                     <TableHead>Status</TableHead>
                     <TableHead>Flagged</TableHead>
                     <TableHead>ML Score</TableHead>
+                    <TableHead>Decision</TableHead>
+                    <TableHead>Rule</TableHead>
                     <TableHead>ML Reason</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Timestamp</TableHead>
@@ -463,6 +482,7 @@ export function TransactionsPage() {
                   {rows.map((row) => {
                     const mlScore = typeof row.ml_score === "number" ? row.ml_score.toFixed(4) : "-";
                     const mlReason = row.ml_reason ?? "No anomaly detected or detector not trained";
+                    const decision = parseDecisionFromMlReason(row.ml_reason);
 
                     return (
                       <TableRow key={row.transaction_id}>
@@ -477,6 +497,12 @@ export function TransactionsPage() {
                           <Badge variant={row.is_flagged ? "destructive" : "secondary"}>{row.is_flagged ? "Yes" : "No"}</Badge>
                         </TableCell>
                         <TableCell>{mlScore}</TableCell>
+                        <TableCell>
+                          <Badge variant={decision.source === "hard_rule" ? "destructive" : decision.source === "model" ? "outline" : "secondary"}>
+                            {decision.source}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{decision.hardRuleReason ?? "-"}</TableCell>
                         <TableCell className="max-w-[320px] truncate" title={mlReason}>
                           {mlReason}
                         </TableCell>
@@ -501,6 +527,7 @@ export function TransactionsPage() {
               ) : null}
             </>
           ) : null}
+        </div>
         </CardContent>
       </Card>
     </PageShell>

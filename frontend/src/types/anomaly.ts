@@ -32,6 +32,17 @@ export interface TrainDetectorResult {
   detector_fitted: boolean;
 }
 
+export interface RetrainDetectorResult {
+  training_mode: string;
+  window_size: number;
+  indexed_non_flagged: number;
+  matched_transactions: number;
+  training_samples: number;
+  stats: Record<string, unknown>;
+  model_saved: string;
+  detector_fitted: boolean;
+}
+
 export interface DemoGeneratePayload {
   count?: number;
   include_anomalies?: boolean;

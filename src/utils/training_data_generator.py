@@ -492,5 +492,8 @@ if __name__ == '__main__':
     print(f"Samples: {stats['samples']}")
     print(f"Model saved to: {stats['model_saved']}")
     print('Evaluation:')
+    print(f"  f1_score: {stats['evaluation'].get('f1_score', 0.0)}")
     for key, value in stats['evaluation'].items():
+        if key == 'f1_score':
+            continue
         print(f"  {key}: {value}")

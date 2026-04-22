@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { PageShell } from "../../../components/common/PageShell";
+import { SeverityBadge } from "../../../components/common/SeverityBadge";
 import { EmptyState } from "../../../components/states/EmptyState";
 import { ErrorState } from "../../../components/states/ErrorState";
 import { LoadingState } from "../../../components/states/LoadingState";
@@ -87,8 +88,8 @@ export function DashboardPage() {
     setActionError(null);
     setActionMessage(null);
     try {
-      const result = await anomalyService.train({ mode: "blockchain" });
-      setActionMessage(`Detector retrained with ${result.training_samples} blockchain samples.`);
+      const result = await anomalyService.retrain();
+      setActionMessage(`Detector retrained on recent clean window: ${result.training_samples} samples from ${result.matched_transactions} matched indexed transactions.`);
       await load();
     } catch (actionLoadError) {
       setActionError(normalizeApiError(actionLoadError).message);
@@ -206,7 +207,7 @@ export function DashboardPage() {
               {trainLoading ? "Training..." : "Train detector (synthetic)"}
             </Button>
             <Button type="button" variant="outline" disabled={!canManageDetector || trainLoading} onClick={() => void retrainFromBlockchain()}>
-              {trainLoading ? "Training..." : "Train detector (blockchain)"}
+              {trainLoading ? "Training..." : "Retrain detector (recent clean window)"}
             </Button>
             <Button type="button" variant="outline" disabled={!canManageDetector || demoLoading} onClick={() => void generateDemoData()}>
               {demoLoading ? "Generating..." : "Generate demo data"}
@@ -276,7 +277,7 @@ export function DashboardPage() {
                   {data.recentAlerts.map((alert) => (
                     <TableRow key={alert.id}>
                       <TableCell>{alert.id}</TableCell>
-                      <TableCell className="capitalize">{alert.severity}</TableCell>
+                      <TableCell><SeverityBadge severity={alert.severity} /></TableCell>
                       <TableCell>
                         <Link to={`/transactions/${alert.transaction_id}`} className="font-medium text-primary hover:underline">
                           {alert.transaction_id.slice(0, 12)}...

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { PageShell } from "../../../components/common/PageShell";
 import { PaginationBar } from "../../../components/common/PaginationBar";
+import { SeverityBadge } from "../../../components/common/SeverityBadge";
 import { EmptyState } from "../../../components/states/EmptyState";
 import { ErrorState } from "../../../components/states/ErrorState";
 import { LoadingState } from "../../../components/states/LoadingState";
@@ -38,7 +39,7 @@ export function AlertsPage() {
   const [resolvingId, setResolvingId] = useState<number | null>(null);
 
   const severitySuggestions = useCallback(() => {
-    const merged = new Set<string>(["low", "medium", "high"]);
+    const merged = new Set<string>(["low", "medium", "high", "critical"]);
     rows.forEach((row) => merged.add(row.severity));
     const query = severityFilterInput.trim().toLowerCase();
     return Array.from(merged)
@@ -161,18 +162,7 @@ export function AlertsPage() {
                 <TableRow key={alert.id}>
                   <TableCell>{alert.id}</TableCell>
                   <TableCell>
-                    <Badge
-                      variant={
-                        alert.severity.toLowerCase() === "critical" || alert.severity.toLowerCase() === "high"
-                          ? "destructive"
-                          : alert.severity.toLowerCase() === "medium"
-                          ? "outline"
-                          : "secondary"
-                      }
-                      className="capitalize"
-                    >
-                      {alert.severity}
-                    </Badge>
+                    <SeverityBadge severity={alert.severity} />
                   </TableCell>
                   <TableCell>{alert.alert_type}</TableCell>
                   <TableCell>

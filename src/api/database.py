@@ -226,7 +226,23 @@ class MetadataStore:
     def save_alert(self, report) -> int:
         conn = self._get_connection()
         try:
-            severity = 'high' if (report.anomaly_result and report.anomaly_result.anomaly_score < -0.2) else 'medium'
+            severity = 'medium'
+            if report.anomaly_result:
+                result = report.anomaly_result
+                hard_rule_triggered = bool(getattr(result, 'hard_rule_triggered', False))
+                confidence = float(getattr(result, 'confidence', 0.0) or 0.0)
+                score = float(getattr(result, 'anomaly_score', 0.0) or 0.0)
+                threshold = float(getattr(result, 'threshold', score) or score)
+                margin = max(0.0, threshold - score)
+
+                if hard_rule_triggered or confidence >= 0.95 or margin >= 0.20:
+                    severity = 'critical'
+                elif confidence >= 0.75 or margin >= 0.08:
+                    severity = 'high'
+                elif confidence >= 0.55 or margin >= 0.03:
+                    severity = 'medium'
+                else:
+                    severity = 'low'
             cursor = conn.execute('''
                 INSERT INTO alerts
                     (transaction_id, alert_type, severity, anomaly_score, confidence, explanation)
