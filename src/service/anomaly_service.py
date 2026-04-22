@@ -115,7 +115,10 @@ class AnomalyService:
         if not self.metadata_repository.resolve_alert(alert_id, resolved_by):
             raise ServiceError(f"Alert #{alert_id} not found or already resolved", status_code=404, error_code="ALERT_NOT_FOUND")
 
-    def generate_demo_data(self, generated_by: str, payload: Dict[str, Any]) -> Tuple[dict, str]:
+    def generate_demo_data(self, generated_by: str, role: str, payload: Dict[str, Any]) -> Tuple[dict, str]:
+        if role not in ("admin", "operator"):
+            raise ServiceError("Access forbidden. Required: admin, operator", status_code=403, error_code="FORBIDDEN")
+
         count = max(1, min(int(payload.get("count", 50)), 500))
         include_anomalies = bool(payload.get("include_anomalies", True))
         anomaly_ratio = float(payload.get("anomaly_ratio", 0.10 if include_anomalies else 0.0))

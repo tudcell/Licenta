@@ -106,6 +106,10 @@ export function AuditPage() {
       return;
     }
 
+    if (!window.confirm(`Restore snapshot "${snapshotName}"? This will overwrite current data. A pre-restore backup will be created automatically.`)) {
+      return;
+    }
+
     setActionLoading(true);
     setActionError(null);
     setLastRestore(null);

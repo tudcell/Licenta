@@ -63,9 +63,12 @@ export function LoginPage() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-2xl">Blockchain Audit Console</CardTitle>
+    <Card className="border-border/70 bg-card/85">
+      <CardHeader className="space-y-3">
+        <div className="inline-flex w-fit items-center rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+          Secure access
+        </div>
+        <CardTitle className="text-2xl tracking-tight">Blockchain Audit Console</CardTitle>
         <CardDescription>Sign in with your API credentials to access the monitoring interface.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -91,7 +94,7 @@ export function LoginPage() {
             />
           </div>
 
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="mt-1 w-full" disabled={loading}>
             {loading ? "Signing in..." : "Sign in"}
           </Button>
         </form>

@@ -20,11 +20,11 @@ export function PaginationBar({
   onNext,
 }: PaginationBarProps) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/45 px-3 py-2">
       <Button type="button" variant="outline" size="sm" disabled={!hasPrevious} onClick={onPrevious}>
         Previous
       </Button>
-      <span className="text-sm text-muted-foreground">
+      <span className="text-sm font-medium text-muted-foreground">
         Page {page}/{totalPages}
         {typeof total === "number" ? ` (total ${total})` : ""}
       </span>

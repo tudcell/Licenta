@@ -161,7 +161,16 @@ export function AlertsPage() {
                 <TableRow key={alert.id}>
                   <TableCell>{alert.id}</TableCell>
                   <TableCell>
-                    <Badge variant={alert.severity.toLowerCase() === "high" ? "destructive" : "secondary"} className="capitalize">
+                    <Badge
+                      variant={
+                        alert.severity.toLowerCase() === "critical" || alert.severity.toLowerCase() === "high"
+                          ? "destructive"
+                          : alert.severity.toLowerCase() === "medium"
+                          ? "outline"
+                          : "secondary"
+                      }
+                      className="capitalize"
+                    >
                       {alert.severity}
                     </Badge>
                   </TableCell>

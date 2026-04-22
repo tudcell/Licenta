@@ -37,20 +37,28 @@ export function AppLayout() {
   };
 
   return (
-    <div className={cn("grid min-h-screen bg-muted/30 transition-[grid-template-columns] duration-300 ease-out", sidebarOpen ? "md:grid-cols-[260px_1fr]" : "md:grid-cols-1")}>
-      <aside className={cn("flex flex-col gap-4 border-r bg-card p-4 transition-all duration-300 ease-out", sidebarOpen ? "opacity-100" : "hidden opacity-0")}>
-        <Link to="/dashboard" className="text-lg font-bold tracking-tight">
-          Audit Console
+    <div className={cn("grid min-h-screen transition-[grid-template-columns] duration-300 ease-out", sidebarOpen ? "md:grid-cols-[272px_1fr]" : "md:grid-cols-1")}>
+      <aside
+        className={cn(
+          "border-border/70 bg-card/85 backdrop-blur-xl transition-all duration-300 ease-out md:sticky md:top-0 md:h-screen",
+          sidebarOpen ? "flex flex-col gap-6 border-r px-4 py-5 opacity-100" : "hidden opacity-0",
+        )}
+      >
+        <Link to="/dashboard" className="rounded-lg border border-border/60 bg-background/50 px-4 py-3">
+          <p className="text-lg font-semibold tracking-tight">Audit Console</p>
+          <p className="text-xs text-muted-foreground">Blockchain monitoring</p>
         </Link>
-        <nav className="grid gap-1">
+        <nav className="grid gap-1.5">
           {visibleLinks.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
               className={({ isActive }) =>
                 cn(
-                  "rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
-                  isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+                  "rounded-lg border px-3 py-2.5 text-sm font-medium",
+                  isActive
+                    ? "border-primary/40 bg-primary/15 text-foreground shadow-[inset_0_1px_0_hsl(var(--primary)/0.3)]"
+                    : "border-transparent text-muted-foreground hover:border-border/70 hover:bg-muted/45 hover:text-foreground",
                 )
               }
             >
@@ -61,22 +69,22 @@ export function AppLayout() {
       </aside>
 
       <div className="flex min-h-screen flex-col">
-        <header className="flex items-center justify-between gap-4 border-b bg-background px-4 py-3">
-          <Button type="button" variant="outline" onClick={toggleSidebar}>
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-border/70 bg-background/85 px-4 py-3 backdrop-blur-xl md:px-6">
+          <Button type="button" variant="outline" onClick={toggleSidebar} className="min-w-[112px]">
             {sidebarOpen ? "Hide menu" : "Show menu"}
           </Button>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">{user?.username}</span>
-            <Badge variant="outline" className="uppercase">
+          <div className="flex items-center gap-2 rounded-full border border-border/70 bg-card/75 px-2.5 py-1.5">
+            <span className="px-1 text-sm text-muted-foreground">{user?.username}</span>
+            <Badge variant="outline" className="rounded-full border-border/70 bg-muted/40 uppercase">
               {user?.role}
             </Badge>
-            <Button type="button" variant="destructive" onClick={onLogout}>
+            <Button type="button" variant="destructive" size="sm" onClick={onLogout}>
               Logout
             </Button>
           </div>
         </header>
 
-        <section className="page-enter p-4 md:p-6">
+        <section className="page-enter p-4 md:p-6 lg:p-8">
           <Outlet />
         </section>
       </div>

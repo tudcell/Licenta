@@ -64,11 +64,13 @@ def refresh():
     app_ctx = get_app_ctx()
     identity = get_jwt_identity()
     user = app_ctx.metadata_store.get_user(identity)
+    if not user:
+        return api_error("User account no longer exists", 401, error_code="AUTH_FAILED")
     access_token = create_access_token(
         identity=identity,
         additional_claims={
-            'role': user['role'] if user else 'viewer',
-            'wallet_name': user.get('wallet_name') if user else None,
+            'role': user['role'],
+            'wallet_name': user.get('wallet_name'),
         }
     )
     return api_success(data={'access_token': access_token}, message="Token refreshed")

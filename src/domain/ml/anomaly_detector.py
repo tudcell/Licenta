@@ -3,7 +3,7 @@
 import os
 import pickle
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -23,7 +23,7 @@ class AnomalyResult:
     confidence: float
     features: Optional[TransactionFeatures] = None
     explanation: str = ""
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     model_score: float = 0.0
     rule_penalty: float = 0.0
     threshold: float = 0.0
@@ -121,7 +121,7 @@ class AnomalyDetector:
             'training_transaction_ids_sample': transaction_ids[:25],
             'anomaly_threshold': self.anomaly_threshold,
             'contamination': self.contamination,
-            'trained_at': datetime.utcnow().isoformat(),
+            'trained_at': datetime.now(timezone.utc).isoformat(),
         }
 
         self.is_fitted = True
@@ -357,23 +357,30 @@ class AnomalyDetector:
 
     @classmethod
     def load(cls, filepath: str) -> 'AnomalyDetector':
-        with open(filepath, 'rb') as f:
-            state = pickle.load(f)
-        detector = cls(**state['config'])
-        detector.model = state['model']
-        detector.scaler = state['scaler']
-        detector.feature_extractor = state.get('feature_extractor', FeatureExtractor())
-        detector.is_fitted = state['is_fitted']
-        detector.training_stats = state['training_stats']
-        score_stats = state.get('score_stats', {})
-        detector._score_mean = score_stats.get('mean', -0.5)
-        detector._score_std = score_stats.get('std', 0.05)
-        detector._score_p1 = score_stats.get('p1', detector.anomaly_threshold)
-        detector._score_p5 = score_stats.get('p5', detector.anomaly_threshold)
-        detector._score_p10 = score_stats.get('p10', detector.anomaly_threshold)
-        detector._adaptive_threshold = score_stats.get('adaptive_threshold', detector.anomaly_threshold)
-        detector._effective_threshold = score_stats.get('effective_threshold', detector._adaptive_threshold)
-        return detector
+        try:
+            with open(filepath, 'rb') as f:
+                state = pickle.load(f)
+            detector = cls(**state['config'])
+            detector.model = state['model']
+            detector.scaler = state['scaler']
+            detector.feature_extractor = state.get('feature_extractor', FeatureExtractor())
+            detector.is_fitted = state['is_fitted']
+            detector.training_stats = state['training_stats']
+            score_stats = state.get('score_stats', {})
+            detector._score_mean = score_stats.get('mean', -0.5)
+            detector._score_std = score_stats.get('std', 0.05)
+            detector._score_p1 = score_stats.get('p1', detector.anomaly_threshold)
+            detector._score_p5 = score_stats.get('p5', detector.anomaly_threshold)
+            detector._score_p10 = score_stats.get('p10', detector.anomaly_threshold)
+            detector._adaptive_threshold = score_stats.get('adaptive_threshold', detector.anomaly_threshold)
+            detector._effective_threshold = score_stats.get('effective_threshold', detector._adaptive_threshold)
+            return detector
+        except Exception as exc:
+            import logging
+            logging.getLogger('blockchain_audit').warning(
+                "Failed to load ML model from %s: %s. Starting with untrained detector.", filepath, exc
+            )
+            return cls()
 
     def __str__(self) -> str:
         status = 'trained' if self.is_fitted else 'untrained'

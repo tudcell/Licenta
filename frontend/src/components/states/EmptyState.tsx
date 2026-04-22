@@ -7,7 +7,7 @@ interface EmptyStateProps {
 
 export function EmptyState({ title = "No data", message }: EmptyStateProps) {
   return (
-    <Card>
+    <Card className="border-border/70 bg-card/70">
       <CardHeader>
         <CardTitle className="text-base">{title}</CardTitle>
       </CardHeader>

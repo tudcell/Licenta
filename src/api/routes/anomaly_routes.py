@@ -78,5 +78,9 @@ def resolve_alert(alert_id: int):
 def generate_demo_data():
     app_ctx = get_app_ctx()
     payload = request.get_json(silent=True) or {}
-    data, message = app_ctx.anomaly_service.generate_demo_data(get_jwt_identity(), payload)
+    data, message = app_ctx.anomaly_service.generate_demo_data(
+        generated_by=get_jwt_identity(),
+        role=get_jwt().get("role", "viewer"),
+        payload=payload,
+    )
     return api_success(data=data, message=message)

@@ -28,6 +28,8 @@ export function WalletsPage() {
   const [detail, setDetail] = useState<WalletDetailPayload | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailPage, setDetailPage] = useState(1);
+  const [detailPagination, setDetailPagination] = useState<PaginationMeta | null>(null);
 
   const [walletName, setWalletName] = useState("");
   const [assignToUser, setAssignToUser] = useState("");
@@ -52,12 +54,14 @@ export function WalletsPage() {
     void loadWallets(1);
   }, [loadWallets]);
 
-  const loadDetail = async (name: string) => {
+  const loadDetail = async (name: string, targetPage = 1) => {
     setDetailLoading(true);
     setDetailError(null);
     try {
-      const result = await walletsService.getByName(name, { page: 1, perPage: 10 });
+      const result = await walletsService.getByName(name, { page: targetPage, perPage: 10 });
       setDetail(result.data);
+      setDetailPagination(result.pagination);
+      setDetailPage(result.pagination.page);
     } catch (loadError) {
       setDetailError(normalizeApiError(loadError).message);
     } finally {
@@ -198,28 +202,42 @@ export function WalletsPage() {
               {detail.transactions.length === 0 ? (
                 <EmptyState message="No indexed transactions for this wallet." />
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>ID</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Timestamp</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {detail.transactions.map((tx) => (
-                      <TableRow key={tx.transaction_id}>
-                        <TableCell>{tx.transaction_id.slice(0, 12)}...</TableCell>
-                        <TableCell>{tx.transaction_type}</TableCell>
-                        <TableCell>{tx.tx_status}</TableCell>
-                        <TableCell>{tx.amount}</TableCell>
-                        <TableCell>{new Date(tx.timestamp).toLocaleString()}</TableCell>
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>ID</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Timestamp</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {detail.transactions.map((tx) => (
+                        <TableRow key={tx.transaction_id}>
+                          <TableCell>{tx.transaction_id.slice(0, 12)}...</TableCell>
+                          <TableCell>{tx.transaction_type}</TableCell>
+                          <TableCell>{tx.tx_status}</TableCell>
+                          <TableCell>{tx.amount}</TableCell>
+                          <TableCell>{new Date(tx.timestamp).toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+
+                  {detailPagination ? (
+                    <PaginationBar
+                      page={detailPagination.page}
+                      totalPages={detailPagination.total_pages}
+                      total={detailPagination.total}
+                      hasPrevious={detailPagination.has_prev}
+                      hasNext={detailPagination.has_next}
+                      onPrevious={() => detail && void loadDetail(detail.wallet.name, detailPage - 1)}
+                      onNext={() => detail && void loadDetail(detail.wallet.name, detailPage + 1)}
+                    />
+                  ) : null}
+                </>
               )}
             </>
           ) : null}

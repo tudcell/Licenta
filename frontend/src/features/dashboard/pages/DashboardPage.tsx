@@ -127,41 +127,41 @@ export function DashboardPage() {
   return (
     <PageShell title="Dashboard" description="System overview from blockchain, transactions, and anomaly alerts.">
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Chain Height</CardTitle>
+        <Card className="bg-gradient-to-b from-card to-card/70">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Chain Height</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-semibold">{data.stats.height}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Transactions</CardTitle>
+        <Card className="bg-gradient-to-b from-card to-card/70">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total Transactions</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-semibold">{data.stats.total_transactions}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Mempool</CardTitle>
+        <Card className="bg-gradient-to-b from-card to-card/70">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mempool</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-semibold">{data.health.mempool_size}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Unresolved Alerts</CardTitle>
+        <Card className="bg-gradient-to-b from-card to-card/70">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Unresolved Alerts</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-semibold">{data.health.alerts_unresolved}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Detector</CardTitle>
+        <Card className="bg-gradient-to-b from-card to-card/70">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Detector</CardTitle>
           </CardHeader>
           <CardContent>
             <Badge variant={data.anomaly.analysis.detector_fitted ? "default" : "secondary"}>
@@ -171,7 +171,7 @@ export function DashboardPage() {
         </Card>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 rounded-xl border border-border/70 bg-background/40 p-3">
         <Button asChild>
           <Link to="/transactions">Create transaction</Link>
         </Button>
@@ -183,7 +183,7 @@ export function DashboardPage() {
         </Button>
       </div>
 
-      <Card>
+      <Card className="border-border/70 bg-card/75">
         <CardHeader>
           <CardTitle>Detector and Demo Controls</CardTitle>
           <p className="text-sm text-muted-foreground">
@@ -219,7 +219,7 @@ export function DashboardPage() {
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+        <Card className="border-border/70 bg-card/75">
           <CardHeader>
             <CardTitle>Recent Transactions</CardTitle>
           </CardHeader>
@@ -255,7 +255,7 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-border/70 bg-card/75">
           <CardHeader>
             <CardTitle>Recent Alerts</CardTitle>
           </CardHeader>
