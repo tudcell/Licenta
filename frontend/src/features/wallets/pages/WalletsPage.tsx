@@ -102,8 +102,8 @@ export function WalletsPage() {
         <CardHeader>
           <CardTitle>Create wallet</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <form className="space-y-4" onSubmit={(event) => void onCreateWallet(event)}>
+        <CardContent className="space-y-6">
+          <form className="space-y-6" onSubmit={(event) => void onCreateWallet(event)}>
             <div className="grid gap-2">
               <Label htmlFor="walletName">Wallet name</Label>
               <Input
@@ -134,7 +134,7 @@ export function WalletsPage() {
         <CardHeader>
           <CardTitle>Wallet list</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
           {!wallets || wallets.wallets.length === 0 ? (
             <EmptyState message="No wallets available." />
           ) : (
@@ -152,7 +152,7 @@ export function WalletsPage() {
                   {wallets.wallets.map((wallet) => (
                     <TableRow key={wallet.name}>
                       <TableCell>{wallet.name}</TableCell>
-                      <TableCell>{wallet.address.slice(0, 16)}...</TableCell>
+                      <TableCell className="font-mono">{wallet.address.slice(0, 16)}...</TableCell>
                       <TableCell>{new Date(wallet.created_at).toLocaleString()}</TableCell>
                       <TableCell>
                         <Button type="button" variant="outline" size="sm" onClick={() => void loadDetail(wallet.name)}>
@@ -184,7 +184,7 @@ export function WalletsPage() {
         <CardHeader>
           <CardTitle>Selected wallet details</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
           {detailLoading ? <LoadingState message="Loading wallet details..." /> : null}
           {detailError ? <ErrorState message={detailError} /> : null}
           {!detailLoading && !detailError && !detail ? <EmptyState message="Select a wallet to inspect transactions." /> : null}
@@ -194,7 +194,7 @@ export function WalletsPage() {
               <Card>
                 <CardContent className="space-y-2 pt-6 text-sm">
                   <p><strong>Name:</strong> {detail.wallet.name}</p>
-                  <p><strong>Address:</strong> {detail.wallet.address}</p>
+                  <p><strong>Address:</strong> <span className="font-mono">{detail.wallet.address}</span></p>
                   <p><strong>Transactions indexed:</strong> {detail.transaction_count}</p>
                 </CardContent>
               </Card>
@@ -216,10 +216,10 @@ export function WalletsPage() {
                     <TableBody>
                       {detail.transactions.map((tx) => (
                         <TableRow key={tx.transaction_id}>
-                          <TableCell>{tx.transaction_id.slice(0, 12)}...</TableCell>
+                          <TableCell className="font-mono">{tx.transaction_id.slice(0, 12)}...</TableCell>
                           <TableCell>{tx.transaction_type}</TableCell>
                           <TableCell>{tx.tx_status}</TableCell>
-                          <TableCell>{tx.amount}</TableCell>
+                          <TableCell className="text-right">{tx.amount}</TableCell>
                           <TableCell>{new Date(tx.timestamp).toLocaleString()}</TableCell>
                         </TableRow>
                       ))}

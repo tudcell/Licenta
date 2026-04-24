@@ -63,12 +63,12 @@ export function LoginPage() {
   };
 
   return (
-    <Card className="border-border/70 bg-card/85">
+    <Card>
       <CardHeader className="space-y-3">
-        <div className="inline-flex w-fit items-center rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+        <div className="inline-flex w-fit items-center rounded-md border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground">
           Secure access
         </div>
-        <CardTitle className="text-2xl tracking-tight">Blockchain Audit Console</CardTitle>
+        <CardTitle className="text-lg font-semibold">Blockchain Audit Console</CardTitle>
         <CardDescription>Sign in with your API credentials to access the monitoring interface.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

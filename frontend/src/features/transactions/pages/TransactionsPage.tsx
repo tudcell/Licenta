@@ -277,7 +277,7 @@ export function TransactionsPage() {
     }
   };
 
-  const rows: IndexedTransaction[] = listData?.transactions ?? [];
+  const rows = useMemo<IndexedTransaction[]>(() => listData?.transactions ?? [], [listData]);
 
   const typeSuggestions = useMemo(() => {
     const merged = new Set<string>(TRANSACTION_TYPES);
@@ -323,7 +323,7 @@ export function TransactionsPage() {
             <SheetDescription>Build payload from typed templates and submit to backend.</SheetDescription>
           </SheetHeader>
 
-          <form className="mt-6 space-y-4" onSubmit={onCreateTransaction}>
+          <form className="mt-6 space-y-6" onSubmit={onCreateTransaction}>
             <div className="grid gap-2">
               <Label htmlFor="walletName">Wallet name (optional)</Label>
               <Input
@@ -345,7 +345,7 @@ export function TransactionsPage() {
               </Select>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
               {selectedTemplate.fields.map((field) => (
                 <div key={field.name} className="grid gap-2">
                   <Label htmlFor={`field-${field.name}`}>{field.label}</Label>
@@ -361,14 +361,14 @@ export function TransactionsPage() {
               ))}
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="grid gap-2">
                 <Label>Transaction payload preview</Label>
-                <pre className="max-h-72 overflow-auto rounded-md border bg-muted p-3 text-xs">{dataPreview}</pre>
+                <pre className="max-h-72 overflow-auto rounded-md border border-border bg-muted p-3 font-mono text-xs">{dataPreview}</pre>
               </div>
               <div className="grid gap-2">
                 <Label>Auto metadata preview</Label>
-                <pre className="max-h-72 overflow-auto rounded-md border bg-muted p-3 text-xs">{metadataPreview}</pre>
+                <pre className="max-h-72 overflow-auto rounded-md border border-border bg-muted p-3 font-mono text-xs">{metadataPreview}</pre>
               </div>
             </div>
 
@@ -400,8 +400,8 @@ export function TransactionsPage() {
         <CardHeader>
           <CardTitle>List and filters</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className="grid gap-2">
               <Label htmlFor="typeFilter">Type</Label>
               <Input
@@ -474,7 +474,7 @@ export function TransactionsPage() {
                     <TableHead>Decision</TableHead>
                     <TableHead>Rule</TableHead>
                     <TableHead>ML Reason</TableHead>
-                    <TableHead>Amount</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
                     <TableHead>Timestamp</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -487,7 +487,7 @@ export function TransactionsPage() {
                     return (
                       <TableRow key={row.transaction_id}>
                         <TableCell>
-                          <Link className="font-medium text-primary hover:underline" to={`/transactions/${row.transaction_id}`}>
+                          <Link className="font-mono text-primary hover:underline" to={`/transactions/${row.transaction_id}`}>
                             {row.transaction_id.slice(0, 12)}...
                           </Link>
                         </TableCell>
@@ -496,17 +496,17 @@ export function TransactionsPage() {
                         <TableCell>
                           <Badge variant={row.is_flagged ? "destructive" : "secondary"}>{row.is_flagged ? "Yes" : "No"}</Badge>
                         </TableCell>
-                        <TableCell>{mlScore}</TableCell>
+                        <TableCell className="font-mono">{mlScore}</TableCell>
                         <TableCell>
                           <Badge variant={decision.source === "hard_rule" ? "destructive" : decision.source === "model" ? "outline" : "secondary"}>
                             {decision.source}
                           </Badge>
                         </TableCell>
-                        <TableCell>{decision.hardRuleReason ?? "-"}</TableCell>
-                        <TableCell className="max-w-[320px] truncate" title={mlReason}>
+                        <TableCell className="font-mono">{decision.hardRuleReason ?? "-"}</TableCell>
+                        <TableCell className="max-w-[320px] truncate font-mono" title={mlReason}>
                           {mlReason}
                         </TableCell>
-                        <TableCell>{row.amount}</TableCell>
+                        <TableCell className="text-right">{row.amount}</TableCell>
                         <TableCell>{new Date(row.timestamp).toLocaleString()}</TableCell>
                       </TableRow>
                     );

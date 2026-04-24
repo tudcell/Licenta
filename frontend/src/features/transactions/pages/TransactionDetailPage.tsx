@@ -94,10 +94,10 @@ export function TransactionDetailPage() {
           <CardContent className="space-y-2 text-sm">
             <p>Type: {data.detail.index_record.transaction_type}</p>
             <p>Status: <Badge variant="outline">{data.detail.index_record.tx_status}</Badge></p>
-            <p>Sender: {data.detail.index_record.sender_address}</p>
-            <p>Amount: {data.detail.index_record.amount}</p>
-            <p>ML score: {typeof data.detail.index_record.ml_score === "number" ? data.detail.index_record.ml_score.toFixed(4) : "-"}</p>
-            <p>ML reason: {data.detail.index_record.ml_reason || "No persisted ML reason recorded."}</p>
+            <p>Sender: <span className="font-mono">{data.detail.index_record.sender_address}</span></p>
+            <p>Amount: <span className="font-mono">{data.detail.index_record.amount}</span></p>
+            <p>ML score: <span className="font-mono">{typeof data.detail.index_record.ml_score === "number" ? data.detail.index_record.ml_score.toFixed(4) : "-"}</span></p>
+            <p>ML reason: <span className="font-mono">{data.detail.index_record.ml_reason || "No persisted ML reason recorded."}</span></p>
             <p>Timestamp: {new Date(data.detail.index_record.timestamp).toLocaleString()}</p>
           </CardContent>
         </Card>
@@ -109,7 +109,7 @@ export function TransactionDetailPage() {
             <CardTitle>Merkle proof payload</CardTitle>
           </CardHeader>
           <CardContent>
-            <pre className="max-h-80 overflow-auto rounded-md border bg-muted p-3 text-xs">{JSON.stringify(data.detail.proof, null, 2)}</pre>
+            <pre className="max-h-80 overflow-auto rounded-md border border-border bg-muted p-3 font-mono text-xs">{JSON.stringify(data.detail.proof, null, 2)}</pre>
           </CardContent>
         </Card>
       ) : null}
@@ -130,8 +130,8 @@ export function TransactionDetailPage() {
             {liveMlResult ? (
               <>
                 <p>Source: Live analyzer output</p>
-                <p>Score: {liveMlResult.anomaly_score.toFixed(4)}</p>
-                <p>Threshold: {liveMlResult.threshold.toFixed(4)}</p>
+                <p>Score: <span className="font-mono">{liveMlResult.anomaly_score.toFixed(4)}</span></p>
+                <p>Threshold: <span className="font-mono">{liveMlResult.threshold.toFixed(4)}</span></p>
                 <p>Decision source: <Badge variant={liveMlResult.decision_source === "hard_rule" ? "destructive" : "outline"}>{liveMlResult.decision_source ?? "model"}</Badge></p>
                 <p>Model-only verdict: {liveMlResult.model_is_anomaly ? "Anomaly" : "Normal"}</p>
                 <p>Hard rule triggered: {liveMlResult.hard_rule_triggered ? "Yes" : "No"}</p>
@@ -141,15 +141,15 @@ export function TransactionDetailPage() {
                     ? liveMlResult.confidence.toFixed(4)
                     : "-"}
                 </p>
-                <p>Model score: {typeof liveMlResult.model_score === "number" ? liveMlResult.model_score.toFixed(4) : "-"}</p>
-                <p>Rule penalty: {typeof liveMlResult.rule_penalty === "number" ? liveMlResult.rule_penalty.toFixed(4) : "-"}</p>
-                <p>Reason: {liveMlResult.explanation || "No model explanation available."}</p>
+                <p>Model score: <span className="font-mono">{typeof liveMlResult.model_score === "number" ? liveMlResult.model_score.toFixed(4) : "-"}</span></p>
+                <p>Rule penalty: <span className="font-mono">{typeof liveMlResult.rule_penalty === "number" ? liveMlResult.rule_penalty.toFixed(4) : "-"}</span></p>
+                <p>Reason: <span className="font-mono">{liveMlResult.explanation || "No model explanation available."}</span></p>
               </>
             ) : hasPersistedMl ? (
               <>
                 <p>Source: Persisted indexed ML data</p>
-                <p>Score: {typeof persistedMlScore === "number" ? persistedMlScore.toFixed(4) : "-"}</p>
-                <p>Reason: {persistedMlReason || "No model explanation available."}</p>
+                <p>Score: <span className="font-mono">{typeof persistedMlScore === "number" ? persistedMlScore.toFixed(4) : "-"}</span></p>
+                <p>Reason: <span className="font-mono">{persistedMlReason || "No model explanation available."}</span></p>
                 <p className="text-muted-foreground">The detector may be offline or the transaction was never re-analyzed after restart, but the saved ML result is still available.</p>
               </>
             ) : (
@@ -173,8 +173,8 @@ export function TransactionDetailPage() {
 
             <h4>ML insights</h4>
             <p>Source: Persisted indexed ML data</p>
-            <p>Score: {typeof persistedMlScore === "number" ? persistedMlScore.toFixed(4) : "-"}</p>
-            <p>Reason: {persistedMlReason || "No model explanation available."}</p>
+            <p>Score: <span className="font-mono">{typeof persistedMlScore === "number" ? persistedMlScore.toFixed(4) : "-"}</span></p>
+            <p>Reason: <span className="font-mono">{persistedMlReason || "No model explanation available."}</span></p>
             <p className="text-muted-foreground">The transaction was indexed with ML data, but live analyzer output was not available after reload.</p>
 
             <p>
@@ -185,8 +185,8 @@ export function TransactionDetailPage() {
           </>
         ) : data.alertInsight ? (
           <>
-            <p>Score: {typeof data.alertInsight.anomaly_score === "number" ? data.alertInsight.anomaly_score.toFixed(4) : "-"}</p>
-            <p>Reason: {data.alertInsight.explanation || "No explanation provided by alert."}</p>
+            <p>Score: <span className="font-mono">{typeof data.alertInsight.anomaly_score === "number" ? data.alertInsight.anomaly_score.toFixed(4) : "-"}</span></p>
+            <p>Reason: <span className="font-mono">{data.alertInsight.explanation || "No explanation provided by alert."}</span></p>
             <p>Flagged decision: Flagged because this transaction has a recorded anomaly alert.</p>
           </>
         ) : (

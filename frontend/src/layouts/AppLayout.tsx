@@ -1,4 +1,16 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import {
+  ArrowRightLeft,
+  Bell,
+  Blocks,
+  LayoutDashboard,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ShieldCheck,
+  Wallet,
+} from "lucide-react";
+import type { ComponentType } from "react";
 
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -11,15 +23,16 @@ interface NavigationItem {
   path: string;
   label: string;
   roles: UserRole[];
+  icon: ComponentType<{ className?: string }>;
 }
 
 const navigationItems: NavigationItem[] = [
-  { path: "/dashboard", label: "Dashboard", roles: ["admin", "operator", "viewer"] },
-  { path: "/transactions", label: "Transactions", roles: ["admin", "operator", "viewer"] },
-  { path: "/blockchain", label: "Blockchain", roles: ["admin", "operator", "viewer"] },
-  { path: "/alerts", label: "Alerts", roles: ["admin", "operator", "viewer"] },
-  { path: "/wallets", label: "Wallets", roles: ["admin", "operator", "viewer"] },
-  { path: "/audit", label: "Audit", roles: ["admin", "operator"] },
+  { path: "/dashboard", label: "Dashboard", roles: ["admin", "operator", "viewer"], icon: LayoutDashboard },
+  { path: "/transactions", label: "Transactions", roles: ["admin", "operator", "viewer"], icon: ArrowRightLeft },
+  { path: "/blockchain", label: "Blockchain", roles: ["admin", "operator", "viewer"], icon: Blocks },
+  { path: "/alerts", label: "Alerts", roles: ["admin", "operator", "viewer"], icon: Bell },
+  { path: "/wallets", label: "Wallets", roles: ["admin", "operator", "viewer"], icon: Wallet },
+  { path: "/audit", label: "Audit", roles: ["admin", "operator"], icon: ShieldCheck },
 ];
 
 export function AppLayout() {
@@ -37,54 +50,56 @@ export function AppLayout() {
   };
 
   return (
-    <div className={cn("grid min-h-screen transition-[grid-template-columns] duration-300 ease-out", sidebarOpen ? "md:grid-cols-[272px_1fr]" : "md:grid-cols-1")}>
+    <div className={cn("grid min-h-screen bg-background transition-[grid-template-columns] duration-300 ease-out", sidebarOpen ? "md:grid-cols-[236px_minmax(0,1fr)]" : "md:grid-cols-1")}>
       <aside
         className={cn(
-          "border-border/70 bg-card/85 backdrop-blur-xl transition-all duration-300 ease-out md:sticky md:top-0 md:h-screen",
-          sidebarOpen ? "flex flex-col gap-6 border-r px-4 py-5 opacity-100" : "hidden opacity-0",
+          "border-r border-border bg-card/70 transition-all duration-300 ease-out md:sticky md:top-0 md:h-screen",
+          sidebarOpen ? "flex flex-col gap-4 p-3 opacity-100" : "hidden opacity-0",
         )}
       >
-        <Link to="/dashboard" className="rounded-lg border border-border/60 bg-background/50 px-4 py-3">
-          <p className="text-lg font-semibold tracking-tight">Audit Console</p>
+        <Link to="/dashboard" className="rounded-md border border-border bg-background px-3 py-2.5">
+          <p className="text-sm font-semibold tracking-tight">Audit Console</p>
           <p className="text-xs text-muted-foreground">Blockchain monitoring</p>
         </Link>
-        <nav className="grid gap-1.5">
+        <nav className="grid gap-1">
           {visibleLinks.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
               className={({ isActive }) =>
                 cn(
-                  "rounded-lg border px-3 py-2.5 text-sm font-medium",
+                  "flex h-9 items-center gap-2 rounded-md border border-transparent px-2.5 text-sm text-muted-foreground",
                   isActive
-                    ? "border-primary/40 bg-primary/15 text-foreground shadow-[inset_0_1px_0_hsl(var(--primary)/0.3)]"
-                    : "border-transparent text-muted-foreground hover:border-border/70 hover:bg-muted/45 hover:text-foreground",
+                    ? "border-border bg-background text-foreground"
+                    : "hover:bg-muted/70 hover:text-foreground",
                 )
               }
             >
-              {item.label}
+              <item.icon className="h-4 w-4" />
+              <span>{item.label}</span>
             </NavLink>
           ))}
         </nav>
       </aside>
 
       <div className="flex min-h-screen flex-col">
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-border/70 bg-background/85 px-4 py-3 backdrop-blur-xl md:px-6">
-          <Button type="button" variant="outline" onClick={toggleSidebar} className="min-w-[112px]">
-            {sidebarOpen ? "Hide menu" : "Show menu"}
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-border bg-background/95 px-4 py-2.5 md:px-6">
+          <Button type="button" variant="ghost" size="icon" onClick={toggleSidebar} aria-label={sidebarOpen ? "Hide menu" : "Show menu"}>
+            {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
           </Button>
-          <div className="flex items-center gap-2 rounded-full border border-border/70 bg-card/75 px-2.5 py-1.5">
-            <span className="px-1 text-sm text-muted-foreground">{user?.username}</span>
-            <Badge variant="outline" className="rounded-full border-border/70 bg-muted/40 uppercase">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">{user?.username}</span>
+            <Badge variant="outline" className="px-2 uppercase">
               {user?.role}
             </Badge>
-            <Button type="button" variant="destructive" size="sm" onClick={onLogout}>
+            <Button type="button" variant="ghost" size="sm" onClick={onLogout} className="gap-1.5">
+              <LogOut className="h-3.5 w-3.5" />
               Logout
             </Button>
           </div>
         </header>
 
-        <section className="page-enter p-4 md:p-6 lg:p-8">
+        <section className="page-enter p-4 md:p-6">
           <Outlet />
         </section>
       </div>

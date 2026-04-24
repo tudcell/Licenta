@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 
 export function NotFoundPage() {
   return (
-    <main className="grid min-h-screen place-items-center p-6">
+    <main className="grid min-h-screen place-items-center bg-background p-6">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Page not found</CardTitle>

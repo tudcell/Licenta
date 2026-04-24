@@ -62,11 +62,11 @@ export function BlockDetailPage() {
           <CardTitle>Block metadata</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          <p><strong>Hash:</strong> {block.block_hash}</p>
-          <p><strong>Previous hash:</strong> {block.previous_hash}</p>
+          <p><strong>Hash:</strong> <span className="font-mono">{block.block_hash}</span></p>
+          <p><strong>Previous hash:</strong> <span className="font-mono">{block.previous_hash}</span></p>
           <p><strong>Difficulty:</strong> {block.difficulty}</p>
           <p><strong>Nonce:</strong> {block.nonce}</p>
-          <p><strong>Merkle root:</strong> {block.merkle_root}</p>
+          <p><strong>Merkle root:</strong> <span className="font-mono">{block.merkle_root}</span></p>
           <p><strong>Timestamp:</strong> {new Date(block.timestamp).toLocaleString()}</p>
         </CardContent>
       </Card>
@@ -84,9 +84,9 @@ export function BlockDetailPage() {
               <TableBody>
                 {block.transactions.map((tx) => (
                   <TableRow key={tx.transaction_id}>
-                    <TableCell>{tx.transaction_id.slice(0, 12)}...</TableCell>
+                    <TableCell className="font-mono">{tx.transaction_id.slice(0, 12)}...</TableCell>
                     <TableCell>{tx.transaction_type}</TableCell>
-                    <TableCell>{tx.sender_address.slice(0, 16)}...</TableCell>
+                    <TableCell className="font-mono">{tx.sender_address.slice(0, 16)}...</TableCell>
                     <TableCell>{new Date(tx.timestamp).toLocaleString()}</TableCell>
                   </TableRow>
                 ))}

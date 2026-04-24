@@ -97,14 +97,14 @@ export function BlockchainPage() {
 
   return (
     <PageShell title="Blockchain" description="Chain status, validation, mining, and mempool visibility.">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Height</CardTitle></CardHeader><CardContent><p className="text-3xl font-semibold">{stats.height}</p></CardContent></Card>
         <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total Blocks</CardTitle></CardHeader><CardContent><p className="text-3xl font-semibold">{stats.total_blocks}</p></CardContent></Card>
         <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total Tx</CardTitle></CardHeader><CardContent><p className="text-3xl font-semibold">{stats.total_transactions}</p></CardContent></Card>
         <Card><CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Mempool</CardTitle></CardHeader><CardContent><p className="text-3xl font-semibold">{stats.mempool_size}</p></CardContent></Card>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-4">
         <Button type="button" variant="outline" onClick={onValidate} disabled={actionLoading}>Validate chain</Button>
         <Button type="button" onClick={onMine} disabled={actionLoading || !canMine}>Mine block</Button>
       </div>
@@ -124,7 +124,7 @@ export function BlockchainPage() {
 
       <Card>
         <CardHeader><CardTitle>Blocks</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
           {chain.chain.length === 0 ? (
             <EmptyState message="No blocks found." />
           ) : (
@@ -134,10 +134,10 @@ export function BlockchainPage() {
                 <TableBody>
                   {chain.chain.map((block) => (
                     <TableRow key={block.index}>
-                      <TableCell><Link className="font-medium text-primary hover:underline" to={`/blockchain/${block.index}`}>{block.index}</Link></TableCell>
-                      <TableCell>{block.block_hash.slice(0, 12)}...</TableCell>
-                      <TableCell>{block.previous_hash.slice(0, 12)}...</TableCell>
-                      <TableCell>{block.transactions.length}</TableCell>
+                      <TableCell><Link className="font-mono text-primary hover:underline" to={`/blockchain/${block.index}`}>{block.index}</Link></TableCell>
+                      <TableCell className="font-mono">{block.block_hash.slice(0, 12)}...</TableCell>
+                      <TableCell className="font-mono">{block.previous_hash.slice(0, 12)}...</TableCell>
+                      <TableCell className="text-right">{block.transactions.length}</TableCell>
                       <TableCell>{new Date(block.timestamp).toLocaleString()}</TableCell>
                     </TableRow>
                   ))}
@@ -161,7 +161,7 @@ export function BlockchainPage() {
 
       <Card>
         <CardHeader><CardTitle>Mempool</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
           {mempool.transactions.length === 0 ? (
             <EmptyState message="No pending transactions in mempool." />
           ) : (
@@ -171,9 +171,9 @@ export function BlockchainPage() {
                 <TableBody>
                   {mempool.transactions.map((tx) => (
                     <TableRow key={tx.transaction_id}>
-                      <TableCell><Link className="font-medium text-primary hover:underline" to={`/transactions/${tx.transaction_id}`}>{tx.transaction_id.slice(0, 12)}...</Link></TableCell>
+                      <TableCell><Link className="font-mono text-primary hover:underline" to={`/transactions/${tx.transaction_id}`}>{tx.transaction_id.slice(0, 12)}...</Link></TableCell>
                       <TableCell>{tx.transaction_type}</TableCell>
-                      <TableCell>{tx.sender_address.slice(0, 12)}...</TableCell>
+                      <TableCell className="font-mono">{tx.sender_address.slice(0, 12)}...</TableCell>
                       <TableCell>{new Date(tx.timestamp).toLocaleString()}</TableCell>
                     </TableRow>
                   ))}

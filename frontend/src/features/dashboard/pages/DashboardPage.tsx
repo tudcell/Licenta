@@ -127,8 +127,8 @@ export function DashboardPage() {
 
   return (
     <PageShell title="Dashboard" description="System overview from blockchain, transactions, and anomaly alerts.">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <Card className="bg-gradient-to-b from-card to-card/70">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Chain Height</CardTitle>
           </CardHeader>
@@ -136,7 +136,7 @@ export function DashboardPage() {
             <p className="text-3xl font-semibold">{data.stats.height}</p>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-b from-card to-card/70">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total Transactions</CardTitle>
           </CardHeader>
@@ -144,7 +144,7 @@ export function DashboardPage() {
             <p className="text-3xl font-semibold">{data.stats.total_transactions}</p>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-b from-card to-card/70">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mempool</CardTitle>
           </CardHeader>
@@ -152,7 +152,7 @@ export function DashboardPage() {
             <p className="text-3xl font-semibold">{data.health.mempool_size}</p>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-b from-card to-card/70">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Unresolved Alerts</CardTitle>
           </CardHeader>
@@ -160,7 +160,7 @@ export function DashboardPage() {
             <p className="text-3xl font-semibold">{data.health.alerts_unresolved}</p>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-b from-card to-card/70">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Detector</CardTitle>
           </CardHeader>
@@ -172,7 +172,7 @@ export function DashboardPage() {
         </Card>
       </div>
 
-      <div className="flex flex-wrap gap-2 rounded-xl border border-border/70 bg-background/40 p-3">
+      <div className="flex flex-wrap gap-4 rounded-md border border-border bg-card p-4">
         <Button asChild>
           <Link to="/transactions">Create transaction</Link>
         </Button>
@@ -184,7 +184,7 @@ export function DashboardPage() {
         </Button>
       </div>
 
-      <Card className="border-border/70 bg-card/75">
+      <Card>
         <CardHeader>
           <CardTitle>Detector and Demo Controls</CardTitle>
           <p className="text-sm text-muted-foreground">
@@ -194,7 +194,7 @@ export function DashboardPage() {
               : ""}
           </p>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
           {actionError ? <ErrorState message={actionError} /> : null}
           {actionMessage ? (
             <Alert>
@@ -202,7 +202,7 @@ export function DashboardPage() {
               <AlertDescription>{actionMessage}</AlertDescription>
             </Alert>
           ) : null}
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-4">
             <Button type="button" variant="outline" disabled={!canManageDetector || trainLoading} onClick={() => void trainWithSynthetic()}>
               {trainLoading ? "Training..." : "Train detector (synthetic)"}
             </Button>
@@ -219,8 +219,8 @@ export function DashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="border-border/70 bg-card/75">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
           <CardHeader>
             <CardTitle>Recent Transactions</CardTitle>
           </CardHeader>
@@ -241,7 +241,7 @@ export function DashboardPage() {
                   {data.recentTransactions.map((tx) => (
                     <TableRow key={tx.transaction_id}>
                       <TableCell>
-                        <Link to={`/transactions/${tx.transaction_id}`} className="font-medium text-primary hover:underline">
+                        <Link to={`/transactions/${tx.transaction_id}`} className="font-mono text-primary hover:underline">
                           {tx.transaction_id.slice(0, 12)}...
                         </Link>
                       </TableCell>
@@ -256,7 +256,7 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 bg-card/75">
+        <Card>
           <CardHeader>
             <CardTitle>Recent Alerts</CardTitle>
           </CardHeader>
@@ -279,7 +279,7 @@ export function DashboardPage() {
                       <TableCell>{alert.id}</TableCell>
                       <TableCell><SeverityBadge severity={alert.severity} /></TableCell>
                       <TableCell>
-                        <Link to={`/transactions/${alert.transaction_id}`} className="font-medium text-primary hover:underline">
+                        <Link to={`/transactions/${alert.transaction_id}`} className="font-mono text-primary hover:underline">
                           {alert.transaction_id.slice(0, 12)}...
                         </Link>
                       </TableCell>

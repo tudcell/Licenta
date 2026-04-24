@@ -9,6 +9,7 @@ import { ErrorState } from "../../../components/states/ErrorState";
 import { LoadingState } from "../../../components/states/LoadingState";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
 import { Label } from "../../../components/ui/label";
 import { Select } from "../../../components/ui/select";
@@ -113,31 +114,38 @@ export function AlertsPage() {
 
   return (
     <PageShell title="Alerts" description="Real-time and indexed anomaly alerts.">
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="grid gap-2">
-          <Label htmlFor="severity">Severity</Label>
-          <Input
-            id="severity"
-            list="alert-severity-suggestions"
-            value={severityFilterInput}
-            onChange={(event) => setSeverityFilterInput(event.target.value)}
-            placeholder="high"
-          />
-          <datalist id="alert-severity-suggestions">
-            {severitySuggestions().map((value) => (
-              <option key={value} value={value} />
-            ))}
-          </datalist>
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="resolved">Resolved</Label>
-          <Select id="resolved" value={resolvedFilter} onChange={(event) => setResolvedFilter(event.target.value)}>
-            <option value="all">All</option>
-            <option value="true">Resolved</option>
-            <option value="false">Unresolved</option>
-          </Select>
-        </div>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Filters</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="severity">Severity</Label>
+              <Input
+                id="severity"
+                list="alert-severity-suggestions"
+                value={severityFilterInput}
+                onChange={(event) => setSeverityFilterInput(event.target.value)}
+                placeholder="high"
+              />
+              <datalist id="alert-severity-suggestions">
+                {severitySuggestions().map((value) => (
+                  <option key={value} value={value} />
+                ))}
+              </datalist>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="resolved">Resolved</Label>
+              <Select id="resolved" value={resolvedFilter} onChange={(event) => setResolvedFilter(event.target.value)}>
+                <option value="all">All</option>
+                <option value="true">Resolved</option>
+                <option value="false">Unresolved</option>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {actionError ? <ErrorState message={actionError} /> : null}
       {refreshing ? <p className="text-sm text-muted-foreground">Updating alerts...</p> : null}
@@ -145,66 +153,71 @@ export function AlertsPage() {
       {rows.length === 0 ? (
         <EmptyState message="No alerts match current filters." />
       ) : (
-        <>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Severity</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Transaction</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((alert) => (
-                <TableRow key={alert.id}>
-                  <TableCell>{alert.id}</TableCell>
-                  <TableCell>
-                    <SeverityBadge severity={alert.severity} />
-                  </TableCell>
-                  <TableCell>{alert.alert_type}</TableCell>
-                  <TableCell>
-                    <Link to={`/transactions/${alert.transaction_id}`} className="font-medium text-primary hover:underline">
-                      {alert.transaction_id.slice(0, 12)}...
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={alert.is_resolved ? "secondary" : "outline"}>{alert.is_resolved ? "Resolved" : "Open"}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    {canResolve && !alert.is_resolved ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={resolvingId === alert.id}
-                        onClick={() => void onResolve(alert.id)}
-                      >
-                        {resolvingId === alert.id ? "Resolving..." : "Resolve"}
-                      </Button>
-                    ) : (
-                      "-"
-                    )}
-                  </TableCell>
+        <Card>
+          <CardHeader>
+            <CardTitle>Alert list</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Severity</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Transaction</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Action</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {rows.map((alert) => (
+                  <TableRow key={alert.id}>
+                    <TableCell className="font-mono">{alert.id}</TableCell>
+                    <TableCell>
+                      <SeverityBadge severity={alert.severity} />
+                    </TableCell>
+                    <TableCell>{alert.alert_type}</TableCell>
+                    <TableCell>
+                      <Link to={`/transactions/${alert.transaction_id}`} className="font-mono text-primary hover:underline">
+                        {alert.transaction_id.slice(0, 12)}...
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={alert.is_resolved ? "secondary" : "outline"}>{alert.is_resolved ? "Resolved" : "Open"}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {canResolve && !alert.is_resolved ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={resolvingId === alert.id}
+                          onClick={() => void onResolve(alert.id)}
+                        >
+                          {resolvingId === alert.id ? "Resolving..." : "Resolve"}
+                        </Button>
+                      ) : (
+                        "-"
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
 
-          {pagination ? (
-            <PaginationBar
-              page={pagination.page}
-              totalPages={pagination.total_pages}
-              total={pagination.total}
-              hasPrevious={pagination.has_prev}
-              hasNext={pagination.has_next}
-              onPrevious={() => void load(pagination.page - 1)}
-              onNext={() => void load(pagination.page + 1)}
-            />
-          ) : null}
-        </>
+            {pagination ? (
+              <PaginationBar
+                page={pagination.page}
+                totalPages={pagination.total_pages}
+                total={pagination.total}
+                hasPrevious={pagination.has_prev}
+                hasNext={pagination.has_next}
+                onPrevious={() => void load(pagination.page - 1)}
+                onNext={() => void load(pagination.page + 1)}
+              />
+            ) : null}
+          </CardContent>
+        </Card>
       )}
     </PageShell>
   );

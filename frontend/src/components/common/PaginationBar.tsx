@@ -20,7 +20,7 @@ export function PaginationBar({
   onNext,
 }: PaginationBarProps) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/45 px-3 py-2">
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-md border border-border bg-card px-4 py-3">
       <Button type="button" variant="outline" size="sm" disabled={!hasPrevious} onClick={onPrevious}>
         Previous
       </Button>

@@ -152,8 +152,8 @@ export function AuditPage() {
 
       <Card>
         <CardHeader><CardTitle>Actions</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-2">
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-4">
             <Button type="button" variant="outline" disabled={actionLoading} onClick={() => void load()}>Refresh</Button>
             <Button type="button" disabled={actionLoading} onClick={() => void onCreateBackup()}>Create backup</Button>
             <Button type="button" variant="outline" disabled={actionLoading} onClick={() => void onExportAudit()}>Export audit log</Button>
@@ -162,8 +162,8 @@ export function AuditPage() {
           {lastCreated ? (
             <Card>
               <CardContent className="space-y-2 pt-6 text-sm">
-                <p><strong>Backup created:</strong> {lastCreated.snapshot_name}</p>
-                {lastCreated.pruned_snapshots.length > 0 ? <p><strong>Pruned:</strong> {lastCreated.pruned_snapshots.join(", ")}</p> : null}
+                <p><strong>Backup created:</strong> <span className="font-mono">{lastCreated.snapshot_name}</span></p>
+                {lastCreated.pruned_snapshots.length > 0 ? <p><strong>Pruned:</strong> <span className="font-mono">{lastCreated.pruned_snapshots.join(", ")}</span></p> : null}
               </CardContent>
             </Card>
           ) : null}
@@ -172,8 +172,8 @@ export function AuditPage() {
 
       <Card>
         <CardHeader><CardTitle>Restore backup</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <form className="space-y-3" onSubmit={(event) => void onRestore(event)}>
+        <CardContent className="space-y-4">
+          <form className="space-y-4" onSubmit={(event) => void onRestore(event)}>
             <div className="grid gap-2">
               <Label htmlFor="snapshotName">Snapshot name</Label>
               <Input id="snapshotName" value={restoreName} onChange={(event) => setRestoreName(event.target.value)} placeholder="snapshot_...zip" required />
@@ -185,7 +185,7 @@ export function AuditPage() {
           {lastRestore ? (
             <Card>
               <CardContent className="space-y-2 pt-6 text-sm">
-                <p><strong>Restored:</strong> {lastRestore.restored_snapshot}</p>
+                <p><strong>Restored:</strong> <span className="font-mono">{lastRestore.restored_snapshot}</span></p>
                 <p><strong>Components:</strong> {lastRestore.restored_components.join(", ")}</p>
                 <p><strong>Restart required:</strong> {lastRestore.restart_required ? "Yes" : "No"}</p>
               </CardContent>
@@ -205,8 +205,8 @@ export function AuditPage() {
               <TableBody>
                 {snapshots.map((snapshot) => (
                   <TableRow key={snapshot.name}>
-                    <TableCell>{snapshot.name}</TableCell>
-                    <TableCell>{snapshot.size_bytes}</TableCell>
+                    <TableCell className="font-mono">{snapshot.name}</TableCell>
+                    <TableCell className="text-right">{snapshot.size_bytes}</TableCell>
                     <TableCell>{new Date(snapshot.modified_at).toLocaleString()}</TableCell>
                     <TableCell>
                       <Button type="button" variant="outline" size="sm" disabled={actionLoading} onClick={() => void onDownloadBackup(snapshot.name)}>
