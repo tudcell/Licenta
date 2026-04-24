@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Tuple
 
-from src.repository.analyzer_repository import AnalyzerRepository
 from src.repository.blockchain_repository import BlockchainRepository
 from src.repository.metadata_repository import MetadataRepository
 from src.service.exceptions import ServiceError
+from src.service.transaction_analyzer import TransactionAnalyzer
 
 
 def _paginate(items: list, page: int, per_page: int) -> Tuple[list, dict]:
@@ -32,11 +32,11 @@ class BlockchainService:
     def __init__(
         self,
         blockchain_repository: BlockchainRepository,
-        analyzer_repository: AnalyzerRepository,
+        analyzer: TransactionAnalyzer,
         metadata_repository: MetadataRepository,
     ):
         self.blockchain_repository = blockchain_repository
-        self.analyzer_repository = analyzer_repository
+        self.analyzer = analyzer
         self.metadata_repository = metadata_repository
 
     def health(self) -> dict:
@@ -44,7 +44,7 @@ class BlockchainService:
             "status": "healthy",
             "blockchain_height": len(self.blockchain_repository),
             "mempool_size": len(self.blockchain_repository.get_mempool_transactions()),
-            "detector_trained": self.analyzer_repository.detector.is_fitted,
+            "detector_trained": self.analyzer.detector.is_fitted,
             "alerts_unresolved": self.metadata_repository.get_alert_stats().get("unresolved", 0),
         }
 
@@ -83,7 +83,7 @@ class BlockchainService:
         if not self.blockchain_repository.get_mempool_transactions():
             raise ServiceError("No transactions in mempool", status_code=400, error_code="EMPTY_MEMPOOL")
 
-        result = self.analyzer_repository.mine_and_analyze()
+        result = self.analyzer.mine_and_analyze()
         if not result:
             raise ServiceError("Could not mine block", status_code=500, error_code="MINE_FAILED")
 

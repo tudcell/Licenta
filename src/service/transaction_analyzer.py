@@ -64,9 +64,12 @@ class TransactionAnalyzer:
     def analysis_count(self) -> int:
         return self.state.analysis_count
 
-    def _get_clean_training_transactions(self, transactions: Optional[List[Transaction]] = None) -> List[Transaction]:
+    def get_clean_training_transactions(self, transactions: Optional[List[Transaction]] = None) -> List[Transaction]:
         source = transactions if transactions is not None else self.state.historical_transactions
         return self.training_service.get_clean_training_transactions(source)
+
+    def _get_clean_training_transactions(self, transactions: Optional[List[Transaction]] = None) -> List[Transaction]:
+        return self.get_clean_training_transactions(transactions)
 
     def add_transaction(self, transaction: Transaction) -> AuditReport:
         return self.ingestion_service.add_transaction(transaction)

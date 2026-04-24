@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
-from src.api.database import MetadataStore
 from src.domain.entities.transaction import Transaction
 
 
 class MetadataRepository:
-    def __init__(self, store: MetadataStore):
+    def __init__(self, store: Any):
         self._store = store
 
     @property
-    def raw(self) -> MetadataStore:
+    def raw(self) -> Any:
         return self._store
 
     def get_user(self, username: str) -> Optional[Dict]:

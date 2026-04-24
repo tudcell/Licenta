@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
 import uuid
 
-from src.domain.policies.crypto_policy import HashUtils, DigitalSignature
+from src.domain.policies import DigitalSignature, HashUtils
 
 
 class TransactionType(Enum):

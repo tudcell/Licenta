@@ -255,7 +255,7 @@ def create_transaction():
 @jwt_required()
 def analyze_transaction(transaction_id):
     app_ctx = get_app_ctx()
-    report = app_ctx.analyzer_repository.analyze_transaction(transaction_id)
+    report = app_ctx.analyzer.analyze_transaction(transaction_id)
     if report:
         return api_success(data=report.to_dict())
     return api_error("Transaction not found", 404, error_code="TX_NOT_FOUND")

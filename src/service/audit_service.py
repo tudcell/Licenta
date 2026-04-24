@@ -6,16 +6,16 @@ import logging
 from pathlib import Path
 from typing import Dict
 
-from src.repository.analyzer_repository import AnalyzerRepository
 from src.repository.snapshot_repository import SnapshotRepository
 from src.service.exceptions import ServiceError
+from src.service.transaction_analyzer import TransactionAnalyzer
 
 logger = logging.getLogger("blockchain_audit")
 
 
 class AuditService:
-    def __init__(self, analyzer_repository: AnalyzerRepository, snapshot_repository: SnapshotRepository):
-        self.analyzer_repository = analyzer_repository
+    def __init__(self, analyzer: TransactionAnalyzer, snapshot_repository: SnapshotRepository):
+        self.analyzer = analyzer
         self.snapshot_repository = snapshot_repository
 
     def require_admin(self, role: str) -> None:
@@ -23,11 +23,11 @@ class AuditService:
             raise ServiceError("Access forbidden. Required: admin", status_code=403, error_code="FORBIDDEN")
 
     def check_integrity(self) -> dict:
-        return self.analyzer_repository.validate_blockchain_integrity()
+        return self.analyzer.validate_blockchain_integrity()
 
     def export_audit_log(self, role: str) -> str:
         self.require_admin(role)
-        return self.analyzer_repository.export_audit_log()
+        return self.analyzer.export_audit_log()
 
     def list_backups(self, role: str, snapshot_dir: Path) -> list[dict]:
         self.require_admin(role)

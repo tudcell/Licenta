@@ -10,7 +10,6 @@ from src.api.database import MetadataStore
 from src.domain.entities.blockchain import Blockchain
 from src.domain.entities.wallet import WalletManager
 from src.service.transaction_analyzer import TransactionAnalyzer
-from src.repository.analyzer_repository import AnalyzerRepository
 from src.repository.blockchain_repository import BlockchainRepository
 from src.repository.metadata_repository import MetadataRepository
 from src.repository.model_repository import ModelRepository
@@ -30,7 +29,6 @@ class AppContext(Protocol):
     blockchain: Blockchain
     wallet_manager: WalletManager
     analyzer: TransactionAnalyzer
-    analyzer_repository: AnalyzerRepository
     metadata_store: MetadataStore
     blockchain_repository: BlockchainRepository
     metadata_repository: MetadataRepository

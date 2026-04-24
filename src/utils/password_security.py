@@ -1,4 +1,4 @@
-"""Authentication utilities for password hashing and verification."""
+"""Password hashing and verification helpers shared across layers."""
 
 from __future__ import annotations
 
@@ -76,3 +76,4 @@ def verify_password(password: str, stored_hash: str) -> bool:
             return False
 
     return _verify_legacy_sha256(password, stored_hash)
+

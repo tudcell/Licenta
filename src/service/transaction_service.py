@@ -7,10 +7,10 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from src.domain.entities.transaction import TransactionType
-from src.repository.analyzer_repository import AnalyzerRepository
 from src.repository.metadata_repository import MetadataRepository
 from src.repository.wallet_repository import WalletRepository
 from src.service.exceptions import ServiceError
+from src.service.transaction_analyzer import TransactionAnalyzer
 
 
 @dataclass
@@ -28,11 +28,11 @@ class TransactionService:
         self,
         wallet_repository: WalletRepository,
         metadata_repository: MetadataRepository,
-        analyzer_repository: AnalyzerRepository,
+        analyzer: TransactionAnalyzer,
     ):
         self.wallet_repository = wallet_repository
         self.metadata_repository = metadata_repository
-        self.analyzer_repository = analyzer_repository
+        self.analyzer = analyzer
 
     def create_transaction(
         self,
@@ -70,7 +70,7 @@ class TransactionService:
             metadata=tx_metadata,
         )
 
-        report = self.analyzer_repository.add_transaction(tx)
+        report = self.analyzer.add_transaction(tx)
 
         if not report.signature_valid:
             self.metadata_repository.index_transaction(

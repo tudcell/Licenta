@@ -13,7 +13,7 @@ from typing import Any, Dict, Iterator, List, Optional
 
 from src.domain.entities.block import Block, GenesisBlock
 from src.domain.entities.transaction import Transaction, TransactionType
-from src.domain.policies.crypto_policy import MerkleTree
+from src.domain.policies import MerkleTree
 
 logger = logging.getLogger("blockchain_audit")
 

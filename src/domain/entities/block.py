@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 
 from src.domain.entities.transaction import Transaction
-from src.domain.policies.crypto_policy import HashUtils, MerkleProof, MerkleTree
+from src.domain.policies import HashUtils, MerkleProof, MerkleTree
 
 
 @dataclass

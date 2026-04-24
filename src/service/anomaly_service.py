@@ -6,12 +6,12 @@ import logging
 import os
 from typing import Any, Dict, Tuple
 
-from src.repository.analyzer_repository import AnalyzerRepository
 from src.repository.blockchain_repository import BlockchainRepository
 from src.repository.metadata_repository import MetadataRepository
 from src.repository.model_repository import ModelRepository
 from src.repository.wallet_repository import WalletRepository
 from src.service.exceptions import ServiceError
+from src.service.transaction_analyzer import TransactionAnalyzer
 
 logger = logging.getLogger("blockchain_audit")
 
@@ -32,13 +32,13 @@ def _pagination(page: int, per_page: int, total: int) -> dict:
 class AnomalyService:
     def __init__(
         self,
-        analyzer_repository: AnalyzerRepository,
+        analyzer: TransactionAnalyzer,
         blockchain_repository: BlockchainRepository,
         metadata_repository: MetadataRepository,
         wallet_repository: WalletRepository,
         model_repository: ModelRepository,
     ):
-        self.analyzer_repository = analyzer_repository
+        self.analyzer = analyzer
         self.blockchain_repository = blockchain_repository
         self.metadata_repository = metadata_repository
         self.wallet_repository = wallet_repository
@@ -60,30 +60,30 @@ class AnomalyService:
                 logger.info("Training detector with %s synthetic normal sample(s)", sample_count)
                 generator = TrainingDataGenerator(num_users=20)
                 transactions = generator.generate_only_normal(count=sample_count)
-                self.analyzer_repository.detector.fit(transactions)
+                self.analyzer.detector.fit(transactions)
                 message = f"Detector trained with {len(transactions)} synthetic normal samples"
             else:
                 all_transactions = self.blockchain_repository.get_all_transactions()
-                clean_transactions = self.analyzer_repository.get_clean_training_transactions(all_transactions)
-                min_samples = self.analyzer_repository.min_training_samples
+                clean_transactions = self.analyzer.get_clean_training_transactions(all_transactions)
+                min_samples = self.analyzer.min_training_samples
                 if len(clean_transactions) < min_samples:
                     raise ServiceError(
                         f"At least {min_samples} clean transactions required (have {len(clean_transactions)} clean out of {len(all_transactions)} total)",
                         status_code=400,
                         error_code="INSUFFICIENT_DATA",
                     )
-                self.analyzer_repository.train_detector(all_transactions)
+                self.analyzer.train_detector(all_transactions)
                 transactions = clean_transactions
                 message = f"Detector trained with {len(clean_transactions)} clean blockchain transactions"
 
-            self.model_repository.save_detector(self.analyzer_repository.detector, model_path)
+            self.model_repository.save_detector(self.analyzer.detector, model_path)
             logger.info("ML model saved to %s", model_path)
             return {
                 "training_mode": mode,
                 "training_samples": len(transactions),
-                "stats": self.analyzer_repository.detector.training_stats,
+                "stats": self.analyzer.detector.training_stats,
                 "model_saved": model_path,
-                "detector_fitted": self.analyzer_repository.detector.is_fitted,
+                "detector_fitted": self.analyzer.detector.is_fitted,
             }, message
         except ServiceError:
             raise
@@ -92,7 +92,7 @@ class AnomalyService:
             raise ServiceError(f"Training error: {exc}", status_code=500, error_code="TRAINING_ERROR") from exc
 
     def get_anomaly_stats(self) -> dict:
-        analyzer_stats = self.analyzer_repository.get_statistics()
+        analyzer_stats = self.analyzer.get_statistics()
         db_alert_stats = self.metadata_repository.get_alert_stats()
         return {**analyzer_stats, "persistent_alerts": db_alert_stats}
 
@@ -143,7 +143,7 @@ class AnomalyService:
         invalid_signature_count = 0
 
         for tx, _label in combined:
-            report = self.analyzer_repository.add_transaction(tx)
+            report = self.analyzer.add_transaction(tx)
             status = "REJECTED"
             if report.signature_valid:
                 status = "FLAGGED" if report.flagged_for_review else "PENDING"
@@ -203,8 +203,8 @@ class AnomalyService:
             if tx:
                 ordered_transactions.append(tx)
 
-        clean_transactions = self.analyzer_repository.get_clean_training_transactions(ordered_transactions)
-        min_samples = self.analyzer_repository.min_training_samples
+        clean_transactions = self.analyzer.get_clean_training_transactions(ordered_transactions)
+        min_samples = self.analyzer.min_training_samples
         if len(clean_transactions) < min_samples:
             raise ServiceError(
                 f"At least {min_samples} clean transactions required for retraining (have {len(clean_transactions)})",
@@ -212,9 +212,9 @@ class AnomalyService:
                 error_code="INSUFFICIENT_DATA",
             )
 
-        self.analyzer_repository.detector.fit(clean_transactions)
+        self.analyzer.detector.fit(clean_transactions)
         model_path = os.environ.get("ML_MODEL_PATH", os.path.join(os.environ.get("DATA_DIR", "data"), "ml_model.pkl"))
-        self.model_repository.save_detector(self.analyzer_repository.detector, model_path)
+        self.model_repository.save_detector(self.analyzer.detector, model_path)
 
         return {
             "training_mode": "sliding_window_retrain",
@@ -222,9 +222,9 @@ class AnomalyService:
             "indexed_non_flagged": len(indexed_rows),
             "matched_transactions": len(ordered_transactions),
             "training_samples": len(clean_transactions),
-            "stats": self.analyzer_repository.detector.training_stats,
+            "stats": self.analyzer.detector.training_stats,
             "model_saved": model_path,
-            "detector_fitted": self.analyzer_repository.detector.is_fitted,
+            "detector_fitted": self.analyzer.detector.is_fitted,
         }, f"Detector retrained with {len(clean_transactions)} clean recent transactions"
 
 

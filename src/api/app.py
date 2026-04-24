@@ -19,7 +19,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from src.domain.entities.blockchain import Blockchain, BlockchainConfig
 from src.domain.entities.wallet import WalletManager
 from src.service.transaction_analyzer import TransactionAnalyzer
-from src.repository.analyzer_repository import AnalyzerRepository
 from src.repository.blockchain_repository import BlockchainRepository
 from src.repository.metadata_repository import MetadataRepository
 from src.repository.model_repository import ModelRepository
@@ -31,10 +30,10 @@ from src.service.audit_service import AuditService
 from src.service.blockchain_service import BlockchainService
 from src.service.transaction_service import TransactionService
 from src.service.wallet_service import WalletService
+from src.utils.password_security import hash_password
 
 from .extensions import jwt, socketio
 from .database import MetadataStore
-from .auth import hash_password
 from .responses import api_error
 
 logging.basicConfig(
@@ -122,21 +121,20 @@ def create_app(config: dict = None) -> Flask:
 
     app.metadata_store = MetadataStore(db_path=os.environ.get('METADATA_DB', os.path.join(data_dir, 'audit_metadata.db')))
     app.blockchain_repository = BlockchainRepository(app.blockchain)
-    app.analyzer_repository = AnalyzerRepository(app.analyzer)
     app.metadata_repository = MetadataRepository(app.metadata_store)
     app.wallet_repository = WalletRepository(app.wallet_manager)
     app.auth_service = AuthService(app.metadata_repository)
-    app.transaction_service = TransactionService(app.wallet_repository, app.metadata_repository, app.analyzer_repository)
+    app.transaction_service = TransactionService(app.wallet_repository, app.metadata_repository, app.analyzer)
     app.wallet_service = WalletService(app.wallet_repository, app.metadata_repository)
-    app.blockchain_service = BlockchainService(app.blockchain_repository, app.analyzer_repository, app.metadata_repository)
+    app.blockchain_service = BlockchainService(app.blockchain_repository, app.analyzer, app.metadata_repository)
     app.anomaly_service = AnomalyService(
-        analyzer_repository=app.analyzer_repository,
+        analyzer=app.analyzer,
         blockchain_repository=app.blockchain_repository,
         metadata_repository=app.metadata_repository,
         wallet_repository=app.wallet_repository,
         model_repository=app.model_repository,
     )
-    app.audit_service = AuditService(app.analyzer_repository, app.snapshot_repository)
+    app.audit_service = AuditService(app.analyzer, app.snapshot_repository)
 
     for block in app.blockchain:
         for tx in block.transactions:
@@ -220,7 +218,12 @@ def create_app(config: dict = None) -> Flask:
         static_dir = os.path.join(os.path.dirname(__file__), 'static')
         return send_from_directory(static_dir, filename)
 
-    from .routes import auth_bp, blockchain_bp, transaction_bp, wallet_bp, anomaly_bp, audit_bp
+    from .routes.auth_routes import auth_bp
+    from .routes.blockchain_routes import blockchain_bp
+    from .routes.transaction_routes import transaction_bp
+    from .routes.wallet_routes import wallet_bp
+    from .routes.anomaly_routes import anomaly_bp
+    from .routes.audit_routes import audit_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(blockchain_bp)
     app.register_blueprint(transaction_bp)

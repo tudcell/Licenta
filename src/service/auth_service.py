@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from src.api.auth import hash_password, needs_rehash, verify_password
 from src.repository.metadata_repository import MetadataRepository
 from src.service.exceptions import ServiceError
+from src.utils.password_security import hash_password, needs_rehash, verify_password
 
 
 @dataclass
