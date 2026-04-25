@@ -47,6 +47,23 @@ def _parse_cors_origins(raw_value: str):
     return [item.strip() for item in raw_value.split(',') if item.strip()]
 
 
+def _build_backup_sources(app: Flask) -> dict[str, Path]:
+    return {
+        'blockchain': Path(app.blockchain.config.data_dir),
+        'wallets': Path(app.wallet_manager.wallets_dir),
+        'metadata_db': Path(app.metadata_store.db_path),
+        'ml_model': Path(app.ml_model_path),
+    }
+
+
+def _seed_metadata_index(app: Flask) -> None:
+    for block in app.blockchain:
+        for tx in block.transactions:
+            is_flagged = bool(tx.metadata.get('flagged'))
+            app.metadata_store.index_transaction(tx, block.index, tx_status='MINED', is_flagged=is_flagged)
+    logger.info("Existing transactions indexed in SQLite")
+
+
 def create_app(config: dict = None) -> Flask:
     app = Flask(__name__, static_folder=None)
     environment = os.environ.get('APP_ENV', 'development').lower()
@@ -116,10 +133,10 @@ def create_app(config: dict = None) -> Flask:
             logger.warning("Could not load ML model: %s", e)
 
     app.metadata_store = MetadataStore(db_path=os.environ.get('METADATA_DB', os.path.join(data_dir, 'audit_metadata.db')))
-    app.auth_service = AuthService(app.metadata_store)
-    app.transaction_service = TransactionService(app.wallet_manager, app.metadata_store, app.analyzer)
-    app.wallet_service = WalletService(app.wallet_manager, app.metadata_store)
-    app.blockchain_service = BlockchainService(app.blockchain, app.analyzer, app.metadata_store)
+    app.auth_service = AuthService(metadata_store=app.metadata_store)
+    app.transaction_service = TransactionService(wallet_manager=app.wallet_manager, metadata_store=app.metadata_store, analyzer=app.analyzer)
+    app.wallet_service = WalletService(wallet_manager=app.wallet_manager, metadata_store=app.metadata_store)
+    app.blockchain_service = BlockchainService(blockchain=app.blockchain, analyzer=app.analyzer, metadata_store=app.metadata_store)
     app.anomaly_service = AnomalyService(
         analyzer=app.analyzer,
         blockchain=app.blockchain,
@@ -129,20 +146,11 @@ def create_app(config: dict = None) -> Flask:
     app.audit_service = AuditService(
         analyzer=app.analyzer,
         snapshot_dir=Path(app.snapshot_dir),
-        backup_sources={
-            'blockchain': Path(app.blockchain.config.data_dir),
-            'wallets': Path(app.wallet_manager.wallets_dir),
-            'metadata_db': Path(app.metadata_store.db_path),
-            'ml_model': Path(app.ml_model_path),
-        },
+        backup_sources=_build_backup_sources(app),
         snapshot_retention_count=app.snapshot_retention_count,
     )
 
-    for block in app.blockchain:
-        for tx in block.transactions:
-            is_flagged = bool(tx.metadata.get('flagged'))
-            app.metadata_store.index_transaction(tx, block.index, tx_status='MINED', is_flagged=is_flagged)
-    logger.info("Existing transactions indexed in SQLite")
+    _seed_metadata_index(app)
 
     admin_pass = os.environ.get('ADMIN_PASSWORD')
     if not app.metadata_store.get_user('admin'):

@@ -9,7 +9,6 @@ from typing import Any, Dict, Tuple
 from src.infrastructure.metadata_store import MetadataStore
 from src.domain.entities.blockchain import Blockchain
 from src.domain.entities.wallet import WalletManager
-from src.domain.ml.anomaly_detector import AnomalyDetector
 from src.service.exceptions import ServiceError
 from src.service.transaction_analyzer import TransactionAnalyzer
 
@@ -42,13 +41,25 @@ class AnomalyService:
         self.metadata_store = metadata_store
         self.wallet_manager = wallet_manager
 
-    def train_detector(self, role: str, payload: Dict[str, Any], model_path: str) -> Tuple[dict, str]:
+    @staticmethod
+    def _require_admin_or_operator(role: str) -> None:
         if role not in ("admin", "operator"):
             raise ServiceError("Access forbidden. Required: admin, operator", status_code=403, error_code="FORBIDDEN")
 
+    @staticmethod
+    def _resolve_training_mode(payload: Dict[str, Any]) -> str:
         mode = str(payload.get("mode") or ("synthetic" if payload.get("use_synthetic") else "blockchain")).lower()
         if mode not in ALLOWED_TRAINING_MODES:
             raise ServiceError("Invalid training mode. Use 'blockchain' or 'synthetic'.", status_code=400, error_code="INVALID_MODE")
+        return mode
+
+    def _save_detector(self, model_path: str) -> None:
+        self.analyzer.detector.save(model_path)
+        logger.info("ML model saved to %s", model_path)
+
+    def train_detector(self, role: str, payload: Dict[str, Any], model_path: str) -> Tuple[dict, str]:
+        self._require_admin_or_operator(role)
+        mode = self._resolve_training_mode(payload)
 
         try:
             if mode == "synthetic":
@@ -74,8 +85,7 @@ class AnomalyService:
                 transactions = clean_transactions
                 message = f"Detector trained with {len(clean_transactions)} clean blockchain transactions"
 
-            self.analyzer.detector.save(model_path)
-            logger.info("ML model saved to %s", model_path)
+            self._save_detector(model_path)
             return {
                 "training_mode": mode,
                 "training_samples": len(transactions),
@@ -108,15 +118,13 @@ class AnomalyService:
         return {"alerts": alerts, "count": len(alerts)}, _pagination(page, per_page, total)
 
     def resolve_alert(self, role: str, alert_id: int, resolved_by: str) -> None:
-        if role not in ("admin", "operator"):
-            raise ServiceError("Access forbidden. Required: admin, operator", status_code=403, error_code="FORBIDDEN")
+        self._require_admin_or_operator(role)
 
         if not self.metadata_store.resolve_alert(alert_id, resolved_by):
             raise ServiceError(f"Alert #{alert_id} not found or already resolved", status_code=404, error_code="ALERT_NOT_FOUND")
 
     def generate_demo_data(self, generated_by: str, role: str, payload: Dict[str, Any]) -> Tuple[dict, str]:
-        if role not in ("admin", "operator"):
-            raise ServiceError("Access forbidden. Required: admin, operator", status_code=403, error_code="FORBIDDEN")
+        self._require_admin_or_operator(role)
 
         count = max(1, min(int(payload.get("count", 50)), 500))
         include_anomalies = bool(payload.get("include_anomalies", True))
@@ -180,8 +188,7 @@ class AnomalyService:
         return data, f"{len(combined)} transactions generated ({flagged_count} flagged for review)"
 
     def retrain_detector(self, role: str) -> Tuple[dict, str]:
-        if role not in ("admin", "operator"):
-            raise ServiceError("Access forbidden. Required: admin, operator", status_code=403, error_code="FORBIDDEN")
+        self._require_admin_or_operator(role)
 
         window_size = 2000
         indexed_rows, _ = self.metadata_store.search_transactions(
@@ -212,7 +219,7 @@ class AnomalyService:
 
         self.analyzer.detector.fit(clean_transactions)
         model_path = os.environ.get("ML_MODEL_PATH", os.path.join(os.environ.get("DATA_DIR", "data"), "ml_model.pkl"))
-        self.analyzer.detector.save(model_path)
+        self._save_detector(model_path)
 
         return {
             "training_mode": "sliding_window_retrain",
@@ -224,4 +231,3 @@ class AnomalyService:
             "model_saved": model_path,
             "detector_fitted": self.analyzer.detector.is_fitted,
         }, f"Detector retrained with {len(clean_transactions)} clean recent transactions"
-

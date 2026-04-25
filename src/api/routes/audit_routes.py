@@ -72,8 +72,8 @@ def create_backup():
 @jwt_required()
 def restore_backup():
     app_ctx = get_app_ctx()
-    payload = request.get_json(silent=True) or {}
-    snapshot_name = (payload.get('snapshot_name') or '').strip()
+    request_payload = request.get_json(silent=True) or {}
+    snapshot_name = (request_payload.get('snapshot_name') or '').strip()
     try:
         data = app_ctx.audit_service.restore_backup(
             role=get_jwt().get('role', 'viewer'),
@@ -98,4 +98,3 @@ def download_backup(snapshot_name: str):
         return api_error(exc.message, exc.status_code, errors=exc.errors, error_code=exc.error_code, data=exc.data)
 
     return send_file(snapshot_path.resolve(), mimetype='application/zip', as_attachment=True, download_name=snapshot_name)
-

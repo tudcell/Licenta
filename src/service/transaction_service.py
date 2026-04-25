@@ -1,4 +1,4 @@
-"""Transaction use-cases orchestrating wallet, analyzer, and metadata repositories."""
+"""Transaction use-cases orchestrating wallet management, analysis, and metadata indexing."""
 
 from __future__ import annotations
 
@@ -34,6 +34,50 @@ class TransactionService:
         self.metadata_store = metadata_store
         self.analyzer = analyzer
 
+    def _resolve_transaction_wallet(self, requested_wallet_name: str, username: str):
+        wallet = self.wallet_manager.get_wallet(requested_wallet_name)
+        if wallet is None:
+            return self.wallet_manager.create_wallet(requested_wallet_name, metadata={"owner": username})
+        return wallet
+
+    @staticmethod
+    def _analysis_score(report) -> Optional[float]:
+        if not report.anomaly_result:
+            return None
+        return float(report.anomaly_result.anomaly_score)
+
+    @staticmethod
+    def _analysis_reason(report) -> Optional[str]:
+        if not report.anomaly_result:
+            return None
+        return report.anomaly_result.explanation
+
+    def _index_transaction(
+        self,
+        tx,
+        report,
+        tx_status: str,
+        is_flagged: bool,
+    ) -> None:
+        self.metadata_store.index_transaction(
+            tx,
+            tx_status=tx_status,
+            is_flagged=is_flagged,
+            ml_score=self._analysis_score(report),
+            ml_reason=self._analysis_reason(report),
+        )
+
+    @staticmethod
+    def _build_alert_event_payload(tx, report, alert_id: int) -> dict:
+        return {
+            "alert_id": alert_id,
+            "transaction_id": tx.transaction_id,
+            "status": report.overall_status,
+            "explanation": report.anomaly_result.explanation if report.anomaly_result else None,
+            "score": float(report.anomaly_result.anomaly_score) if report.anomaly_result else None,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
     def create_transaction(
         self,
         username: str,
@@ -55,9 +99,7 @@ class TransactionService:
                 error_code="WALLET_FORBIDDEN",
             )
 
-        wallet = self.wallet_manager.get_wallet(requested_wallet_name)
-        if wallet is None:
-            wallet = self.wallet_manager.create_wallet(requested_wallet_name, metadata={"owner": username})
+        wallet = self._resolve_transaction_wallet(requested_wallet_name, username)
 
         if not user.get("wallet_name"):
             self.metadata_store.assign_wallet_to_user(username, requested_wallet_name)
@@ -75,13 +117,7 @@ class TransactionService:
         report = self.analyzer.add_transaction(tx)
 
         if not report.signature_valid:
-            self.metadata_store.index_transaction(
-                tx,
-                tx_status="REJECTED",
-                is_flagged=True,
-                ml_score=float(report.anomaly_result.anomaly_score) if report.anomaly_result else None,
-                ml_reason=report.anomaly_result.explanation if report.anomaly_result else None,
-            )
+            self._index_transaction(tx, report, tx_status="REJECTED", is_flagged=True)
             self.metadata_store.save_alert(report)
             return TransactionCreateResult(
                 status_code=400,
@@ -92,13 +128,7 @@ class TransactionService:
             )
 
         if not report.added_to_mempool:
-            self.metadata_store.index_transaction(
-                tx,
-                tx_status="REJECTED",
-                is_flagged=report.is_suspicious,
-                ml_score=float(report.anomaly_result.anomaly_score) if report.anomaly_result else None,
-                ml_reason=report.anomaly_result.explanation if report.anomaly_result else None,
-            )
+            self._index_transaction(tx, report, tx_status="REJECTED", is_flagged=report.is_suspicious)
             if report.is_suspicious:
                 self.metadata_store.save_alert(report)
 
@@ -111,25 +141,12 @@ class TransactionService:
             )
 
         tx_status = "FLAGGED" if report.flagged_for_review else "PENDING"
-        self.metadata_store.index_transaction(
-            tx,
-            tx_status=tx_status,
-            is_flagged=report.flagged_for_review,
-            ml_score=float(report.anomaly_result.anomaly_score) if report.anomaly_result else None,
-            ml_reason=report.anomaly_result.explanation if report.anomaly_result else None,
-        )
+        self._index_transaction(tx, report, tx_status=tx_status, is_flagged=report.flagged_for_review)
 
         alert_event_payload = None
         if report.is_suspicious:
             alert_id = self.metadata_store.save_alert(report)
-            alert_event_payload = {
-                "alert_id": alert_id,
-                "transaction_id": tx.transaction_id,
-                "status": report.overall_status,
-                "explanation": report.anomaly_result.explanation if report.anomaly_result else None,
-                "score": float(report.anomaly_result.anomaly_score) if report.anomaly_result else None,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
+            alert_event_payload = self._build_alert_event_payload(tx, report, alert_id)
 
         return TransactionCreateResult(
             status_code=201,

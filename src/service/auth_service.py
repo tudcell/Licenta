@@ -75,5 +75,5 @@ class AuthService:
     def revoke_token(self, jti: str) -> None:
         self.metadata_store.revoke_token(jti)
 
-    def get_user(self, username: str):
+    def get_user(self, username: str) -> Optional[dict]:
         return self.metadata_store.get_user(username)
