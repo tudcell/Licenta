@@ -105,9 +105,18 @@ class AnomalyDetector:
         self._amount_high_threshold = self._amount_mean + (3.0 * self._amount_std)
         self._amount_very_high_threshold = self._amount_mean + (4.0 * self._amount_std)
 
-        train_scores = self.model.score_samples(X_scaled)
+        train_model_scores = self.model.score_samples(X_scaled)
+        train_rule_penalties: List[float] = []
+        history: List[Transaction] = []
+        for tx in transactions:
+            tx_features = self.feature_extractor.extract_features(tx, history)
+            train_rule_penalties.append(self._compute_feature_risk_penalty(tx_features))
+            history.append(tx)
+        train_scores = train_model_scores - np.array(train_rule_penalties)
         adaptive_percentile = max(1.0, min(10.0, self.contamination * 100.0))
 
+        self._model_score_mean = float(np.mean(train_model_scores))
+        self._model_score_std = float(np.std(train_model_scores))
         self._score_mean = float(np.mean(train_scores))
         self._score_std = float(np.std(train_scores))
         self._score_p1 = float(np.percentile(train_scores, 1))
@@ -125,6 +134,8 @@ class AnomalyDetector:
             'feature_means': self.scaler.mean_.tolist(),
             'feature_stds': self.scaler.scale_.tolist(),
             'score_distribution': {
+                'model_mean': self._model_score_mean,
+                'model_std': self._model_score_std,
                 'mean': self._score_mean,
                 'std': self._score_std,
                 'min': float(np.min(train_scores)),
@@ -135,6 +146,11 @@ class AnomalyDetector:
                 'adaptive_percentile': adaptive_percentile,
                 'adaptive_threshold': self._adaptive_threshold,
                 'effective_threshold': self._effective_threshold,
+            },
+            'penalty_distribution': {
+                'mean': float(np.mean(train_rule_penalties)) if train_rule_penalties else 0.0,
+                'std': float(np.std(train_rule_penalties)) if train_rule_penalties else 0.0,
+                'max': float(np.max(train_rule_penalties)) if train_rule_penalties else 0.0,
             },
             'training_transaction_ids_sample': transaction_ids[:25],
             'anomaly_threshold': self.anomaly_threshold,
@@ -423,6 +439,8 @@ class AnomalyDetector:
             'is_fitted': self.is_fitted,
             'training_stats': self.training_stats,
             'score_stats': {
+                'model_mean': getattr(self, '_model_score_mean', -0.5),
+                'model_std': getattr(self, '_model_score_std', 0.05),
                 'mean': getattr(self, '_score_mean', -0.5),
                 'std': getattr(self, '_score_std', 0.05),
                 'p1': getattr(self, '_score_p1', self.anomaly_threshold),
@@ -460,6 +478,8 @@ class AnomalyDetector:
             detector.is_fitted = state['is_fitted']
             detector.training_stats = state['training_stats']
             score_stats = state.get('score_stats', {})
+            detector._model_score_mean = score_stats.get('model_mean', -0.5)
+            detector._model_score_std = score_stats.get('model_std', 0.05)
             detector._score_mean = score_stats.get('mean', -0.5)
             detector._score_std = score_stats.get('std', 0.05)
             detector._score_p1 = score_stats.get('p1', detector.anomaly_threshold)

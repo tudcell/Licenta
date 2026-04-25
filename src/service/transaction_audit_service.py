@@ -71,8 +71,12 @@ class TransactionAuditService:
         detector_trained = bool(self.detector.is_fitted)
         training_stats = self.detector.training_stats if detector_trained else {}
 
-        if self.detector.is_fitted and self.state.alerts:
-            anomaly_results = [item.anomaly_result for item in self.state.alerts if item.anomaly_result]
+        if self.detector.is_fitted and self.state.reports_by_transaction_id:
+            anomaly_results = [
+                report.anomaly_result
+                for report in self.state.reports_by_transaction_id.values()
+                if report.anomaly_result is not None
+            ]
             if anomaly_results:
                 anomaly_stats = self.detector.get_anomaly_statistics(anomaly_results)
 
@@ -124,4 +128,3 @@ class TransactionAuditService:
             ensure_ascii=False,
             indent=2,
         )
-
