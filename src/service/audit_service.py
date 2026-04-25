@@ -27,6 +27,11 @@ class AuditService:
         self.snapshot_retention_count = snapshot_retention_count
 
     def require_admin(self, role: str) -> None:
+        """Backward-compatible admin authorization guard."""
+        self._require_admin(role)
+
+    @staticmethod
+    def _require_admin(role: str) -> None:
         if role != "admin":
             raise ServiceError("Access forbidden. Required: admin", status_code=403, error_code="FORBIDDEN")
 
@@ -34,11 +39,11 @@ class AuditService:
         return self.analyzer.validate_blockchain_integrity()
 
     def export_audit_log(self, role: str) -> str:
-        self.require_admin(role)
+        self._require_admin(role)
         return self.analyzer.export_audit_log()
 
     def list_backups(self, role: str) -> list[dict]:
-        self.require_admin(role)
+        self._require_admin(role)
         return list_snapshots(self.snapshot_dir)
 
     def create_backup(
@@ -46,13 +51,17 @@ class AuditService:
         role: str,
         requested_by: str,
     ) -> dict:
-        self.require_admin(role)
-        snapshot = create_snapshot(self.snapshot_dir, self.backup_sources, retention_count=self.snapshot_retention_count)
-        logger.info("Snapshot created by %s: %s", requested_by, snapshot["name"])
+        self._require_admin(role)
+        created_snapshot = create_snapshot(
+            self.snapshot_dir,
+            self.backup_sources,
+            retention_count=self.snapshot_retention_count,
+        )
+        logger.info("Snapshot created by %s: %s", requested_by, created_snapshot["name"])
         return {
-            "snapshot_name": snapshot["name"],
-            "manifest": snapshot["manifest"],
-            "pruned_snapshots": snapshot.get("pruned", []),
+            "snapshot_name": created_snapshot["name"],
+            "manifest": created_snapshot["manifest"],
+            "pruned_snapshots": created_snapshot.get("pruned", []),
         }
 
     def restore_backup(
@@ -61,7 +70,7 @@ class AuditService:
         requested_by: str,
         snapshot_name: str,
     ) -> dict:
-        self.require_admin(role)
+        self._require_admin(role)
         if not snapshot_name:
             raise ServiceError("Field 'snapshot_name' is required", status_code=400, error_code="VALIDATION_ERROR")
 
@@ -96,7 +105,7 @@ class AuditService:
         }
 
     def get_backup_download_path(self, role: str, snapshot_name: str) -> Path:
-        self.require_admin(role)
+        self._require_admin(role)
         try:
             return get_snapshot_path(self.snapshot_dir, snapshot_name)
         except FileNotFoundError as exc:

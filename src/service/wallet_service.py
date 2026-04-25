@@ -2,22 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Dict, Tuple
+from typing import Tuple
 
 from src.infrastructure.metadata_store import MetadataStore
 from src.domain.entities.wallet import WalletManager
 from src.service.exceptions import ServiceError
-
-
-def _build_pagination(page: int, per_page: int, total: int) -> Dict[str, int | bool]:
-    return {
-        "page": page,
-        "per_page": per_page,
-        "total": total,
-        "total_pages": max(1, (total + per_page - 1) // per_page),
-        "has_next": page * per_page < total,
-        "has_prev": page > 1,
-    }
+from src.utils.pagination import build_pagination_metadata, paginate_sequence
 
 
 class WalletService:
@@ -26,18 +16,11 @@ class WalletService:
         self.metadata_store = metadata_store
 
     def list_wallets(self, username: str, role: str, page: int, per_page: int) -> Tuple[dict, dict]:
-        user = self.metadata_store.get_user(username)
-        wallets = self.wallet_manager.list_wallets()
-
-        if role != "admin" and user and user.get("wallet_name"):
-            wallets = [wallet for wallet in wallets if wallet["name"] == user["wallet_name"]]
-
-        total = len(wallets)
-        start = (page - 1) * per_page
-        end = start + per_page
-        paginated_wallets = wallets[start:end]
-
-        return {"wallets": paginated_wallets, "count": len(paginated_wallets)}, _build_pagination(page, per_page, total)
+        current_user = self.metadata_store.get_user(username)
+        all_wallets = self.wallet_manager.list_wallets()
+        visible_wallets = self._filter_visible_wallets(all_wallets, role, current_user)
+        paginated_wallets, pagination = paginate_sequence(visible_wallets, page, per_page)
+        return {"wallets": paginated_wallets, "count": len(paginated_wallets)}, pagination
 
     def create_wallet(self, username: str, role: str, name: str, assign_to_user: str | None) -> dict:
         clean_name = name.strip()
@@ -96,4 +79,13 @@ class WalletService:
             "wallet": wallet.to_dict(include_private_key=False),
             "transactions": indexed_txs,
             "transaction_count": total,
-        }, _build_pagination(page, per_page, total)
+        }, build_pagination_metadata(page, per_page, total)
+
+    @staticmethod
+    def _filter_visible_wallets(wallets: list[dict], role: str, user: dict | None) -> list[dict]:
+        if role == "admin":
+            return wallets
+        if not user or not user.get("wallet_name"):
+            return []
+        assigned_wallet_name = user["wallet_name"]
+        return [wallet for wallet in wallets if wallet["name"] == assigned_wallet_name]
