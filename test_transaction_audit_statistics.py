@@ -23,6 +23,61 @@ class _StubDetector:
         }
 
 
+class _RehydrationDetector:
+    def __init__(self):
+        self.is_fitted = True
+        self.training_stats = {}
+
+    def predict(self, tx, history):
+        is_anomaly = tx.transaction_id.endswith("1")
+        return _mk_result(tx.transaction_id, is_anomaly)
+
+    def get_anomaly_statistics(self, results):
+        anomalies = [item for item in results if item.is_anomaly]
+        return {
+            "total_transactions": len(results),
+            "anomalies_count": len(anomalies),
+            "normal_count": len(results) - len(anomalies),
+            "anomaly_rate": len(anomalies) / len(results),
+        }
+
+
+class _Tx:
+    def __init__(self, tx_id: str):
+        self.transaction_id = tx_id
+
+    def verify_signature(self):
+        return True
+
+
+class _Block:
+    def __init__(self, index: int, transactions):
+        self.index = index
+        self.transactions = transactions
+
+    def verify_transaction_inclusion(self, _tx):
+        return True
+
+
+class _BlockchainStub:
+    def __init__(self, chain):
+        self.chain = chain
+
+    def __iter__(self):
+        return iter(self.chain)
+
+    def get_all_transactions(self):
+        return [tx for block in self.chain for tx in block.transactions]
+
+    @staticmethod
+    def get_statistics():
+        return {"total_transactions": 2}
+
+    @staticmethod
+    def validate_chain():
+        return True, None
+
+
 def _mk_result(transaction_id: str, is_anomaly: bool) -> AnomalyResult:
     return AnomalyResult(
         transaction_id=transaction_id,
@@ -85,3 +140,26 @@ def test_statistics_use_all_reports_not_only_alerts():
     assert stats["anomalies_count"] == 1
     assert stats["normal_count"] == 1
     assert stats["anomaly_rate"] == 0.5
+
+
+def test_statistics_rehydrate_state_after_restart_when_chain_exists():
+    detector = _RehydrationDetector()
+    state = AnalysisStateRepository()
+    chain_transactions = [_Tx("tx-1"), _Tx("tx-2")]
+    blockchain = _BlockchainStub([_Block(1, chain_transactions)])
+
+    service = TransactionAuditService(
+        blockchain=blockchain,
+        detector=detector,
+        state=state,
+        training_service=SimpleNamespace(get_clean_training_transactions=lambda txs: txs),
+    )
+
+    response = service.get_statistics()
+    anomaly_stats = response["anomaly_detection"]
+    analysis_stats = response["analysis"]
+
+    assert anomaly_stats["total_transactions"] == 2
+    assert anomaly_stats["anomalies_count"] == 1
+    assert analysis_stats["total_analyzed"] == 2
+    assert analysis_stats["alerts_count"] == 1
