@@ -9,23 +9,7 @@ from src.infrastructure.metadata_store import MetadataStore
 from src.domain.entities.blockchain import Blockchain
 from src.service.exceptions import ServiceError
 from src.service.transaction_analyzer import TransactionAnalyzer
-
-
-def _paginate(items: list, page: int, per_page: int) -> Tuple[list, dict]:
-    safe_page = max(1, page)
-    safe_per_page = max(1, min(per_page, 100))
-    total = len(items)
-    start = (safe_page - 1) * safe_per_page
-    end = start + safe_per_page
-    pagination = {
-        "page": safe_page,
-        "per_page": safe_per_page,
-        "total": total,
-        "total_pages": max(1, (total + safe_per_page - 1) // safe_per_page),
-        "has_next": safe_page * safe_per_page < total,
-        "has_prev": safe_page > 1,
-    }
-    return items[start:end], pagination
+from src.utils.pagination import paginate_sequence
 
 
 class BlockchainService:
@@ -50,7 +34,7 @@ class BlockchainService:
 
     def get_blockchain(self, page: int, per_page: int) -> Tuple[dict, dict]:
         blocks = [block.to_dict() for block in self.blockchain]
-        paginated_blocks, pagination = _paginate(blocks, page, per_page)
+        paginated_blocks, pagination = paginate_sequence(blocks, page, per_page)
         return {
             "chain": paginated_blocks,
             "height": len(self.blockchain),
@@ -112,10 +96,9 @@ class BlockchainService:
 
     def get_mempool(self, page: int, per_page: int) -> Tuple[dict, dict]:
         mempool_txs = [tx.to_dict() for tx in self.blockchain.get_mempool_transactions()]
-        paginated, pagination = _paginate(mempool_txs, page, per_page)
+        paginated, pagination = paginate_sequence(mempool_txs, page, per_page)
         return {
             "transactions": paginated,
             "count": len(paginated),
             "total_mempool": len(mempool_txs),
         }, pagination
-
