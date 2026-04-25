@@ -192,7 +192,7 @@ with app.test_client() as client:
     print("[OK] 14. Paginated mempool")
 
     # 14b. Mine a flagged transaction and ensure the indexed status becomes MINED
-    getattr(app, 'metadata_repository').update_transaction_state(
+    getattr(app, 'metadata_store').update_transaction_state(
         created_tx_id,
         tx_status='FLAGGED',
         is_flagged=True,

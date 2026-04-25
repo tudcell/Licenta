@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Tuple
 
-from src.repository.blockchain_repository import BlockchainRepository
-from src.repository.metadata_repository import MetadataRepository
+from src.infrastructure.metadata_store import MetadataStore
+from src.domain.entities.blockchain import Blockchain
 from src.service.exceptions import ServiceError
 from src.service.transaction_analyzer import TransactionAnalyzer
 
@@ -31,47 +31,47 @@ def _paginate(items: list, page: int, per_page: int) -> Tuple[list, dict]:
 class BlockchainService:
     def __init__(
         self,
-        blockchain_repository: BlockchainRepository,
+        blockchain: Blockchain,
         analyzer: TransactionAnalyzer,
-        metadata_repository: MetadataRepository,
+        metadata_store: MetadataStore,
     ):
-        self.blockchain_repository = blockchain_repository
+        self.blockchain = blockchain
         self.analyzer = analyzer
-        self.metadata_repository = metadata_repository
+        self.metadata_store = metadata_store
 
     def health(self) -> dict:
         return {
             "status": "healthy",
-            "blockchain_height": len(self.blockchain_repository),
-            "mempool_size": len(self.blockchain_repository.get_mempool_transactions()),
+            "blockchain_height": len(self.blockchain),
+            "mempool_size": len(self.blockchain.get_mempool_transactions()),
             "detector_trained": self.analyzer.detector.is_fitted,
-            "alerts_unresolved": self.metadata_repository.get_alert_stats().get("unresolved", 0),
+            "alerts_unresolved": self.metadata_store.get_alert_stats().get("unresolved", 0),
         }
 
     def get_blockchain(self, page: int, per_page: int) -> Tuple[dict, dict]:
-        blocks = [block.to_dict() for block in self.blockchain_repository]
+        blocks = [block.to_dict() for block in self.blockchain]
         paginated_blocks, pagination = _paginate(blocks, page, per_page)
         return {
             "chain": paginated_blocks,
-            "height": len(self.blockchain_repository),
-            "is_valid": self.blockchain_repository.validate_chain()[0],
+            "height": len(self.blockchain),
+            "is_valid": self.blockchain.validate_chain()[0],
         }, pagination
 
     def get_stats(self) -> dict:
-        stats = self.blockchain_repository.get_statistics()
-        stats["alerts"] = self.metadata_repository.get_alert_stats()
+        stats = self.blockchain.get_statistics()
+        stats["alerts"] = self.metadata_store.get_alert_stats()
         return stats
 
     def validate(self) -> dict:
-        is_valid, error = self.blockchain_repository.validate_chain()
+        is_valid, error = self.blockchain.validate_chain()
         return {
             "is_valid": is_valid,
             "error": error,
-            "height": len(self.blockchain_repository),
+            "height": len(self.blockchain),
         }
 
     def get_block(self, index: int) -> dict:
-        block = self.blockchain_repository.get_block(index)
+        block = self.blockchain.get_block(index)
         if not block:
             raise ServiceError("Block not found", status_code=404, error_code="BLOCK_NOT_FOUND")
         return block.to_dict()
@@ -80,19 +80,19 @@ class BlockchainService:
         if role not in ("admin", "operator"):
             raise ServiceError("Access forbidden. Required: admin, operator", status_code=403, error_code="FORBIDDEN")
 
-        if not self.blockchain_repository.get_mempool_transactions():
+        if not self.blockchain.get_mempool_transactions():
             raise ServiceError("No transactions in mempool", status_code=400, error_code="EMPTY_MEMPOOL")
 
         result = self.analyzer.mine_and_analyze()
         if not result:
             raise ServiceError("Could not mine block", status_code=500, error_code="MINE_FAILED")
 
-        new_block = self.blockchain_repository.get_block(result["block"]["index"])
+        new_block = self.blockchain.get_block(result["block"]["index"])
         if new_block:
             for tx in new_block.transactions:
-                index_record = self.metadata_repository.get_transaction_index(tx.transaction_id) or {}
+                index_record = self.metadata_store.get_transaction_index(tx.transaction_id) or {}
                 is_flagged = bool(index_record.get("is_flagged", 0))
-                self.metadata_repository.update_transaction_state(
+                self.metadata_store.update_transaction_state(
                     tx.transaction_id,
                     block_index=new_block.index,
                     tx_status="MINED",
@@ -111,12 +111,11 @@ class BlockchainService:
         }
 
     def get_mempool(self, page: int, per_page: int) -> Tuple[dict, dict]:
-        mempool_txs = [tx.to_dict() for tx in self.blockchain_repository.get_mempool_transactions()]
+        mempool_txs = [tx.to_dict() for tx in self.blockchain.get_mempool_transactions()]
         paginated, pagination = _paginate(mempool_txs, page, per_page)
         return {
             "transactions": paginated,
             "count": len(paginated),
             "total_mempool": len(mempool_txs),
         }, pagination
-
 
