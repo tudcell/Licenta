@@ -26,6 +26,52 @@ class TransactionAuditService:
         self.state = state
         self.training_service = training_service
 
+    def _rehydrate_state_from_blockchain_if_needed(self) -> None:
+        """Rebuild in-memory reports/alerts from persisted chain data after restart."""
+        if self.state.reports_by_transaction_id:
+            return
+
+        all_transactions = self.blockchain.get_all_transactions()
+        if not all_transactions:
+            return
+
+        blockchain_valid, _ = self.blockchain.validate_chain()
+        history: List[Transaction] = []
+        reconstructed_reports: Dict[str, AuditReport] = {}
+        reconstructed_alerts: List[AuditReport] = []
+
+        for block in self.blockchain:
+            for tx in block.transactions:
+                signature_valid = tx.verify_signature()
+                merkle_valid = block.verify_transaction_inclusion(tx)
+                anomaly_result = None
+                flagged_for_review = False
+
+                if self.detector.is_fitted and signature_valid:
+                    anomaly_result = self.detector.predict(tx, history)
+                    flagged_for_review = bool(anomaly_result.is_anomaly)
+
+                report = AuditReport(
+                    transaction_id=tx.transaction_id,
+                    blockchain_valid=blockchain_valid,
+                    signature_valid=signature_valid,
+                    anomaly_result=anomaly_result,
+                    block_index=block.index,
+                    merkle_proof_valid=merkle_valid,
+                    flagged_for_review=flagged_for_review,
+                    added_to_mempool=False,
+                )
+                reconstructed_reports[tx.transaction_id] = report
+                if report.is_suspicious:
+                    reconstructed_alerts.append(report)
+                if signature_valid:
+                    history.append(tx)
+
+        self.state.reports_by_transaction_id = reconstructed_reports
+        self.state.alerts = reconstructed_alerts
+        self.state.historical_transactions = history
+        self.state.analysis_count = max(self.state.analysis_count, len(reconstructed_reports))
+
     def analyze_transaction(self, transaction_id: str) -> Optional[AuditReport]:
         cached = self.state.get_report(transaction_id)
         if cached:
@@ -63,16 +109,22 @@ class TransactionAuditService:
         return report
 
     def get_alerts(self, limit: int = None, severity: str = None) -> List[AuditReport]:
+        self._rehydrate_state_from_blockchain_if_needed()
         return self.state.get_alerts(limit=limit, severity=severity)
 
     def get_statistics(self) -> Dict[str, Any]:
+        self._rehydrate_state_from_blockchain_if_needed()
         blockchain_stats = self.blockchain.get_statistics()
         anomaly_stats = {}
         detector_trained = bool(self.detector.is_fitted)
         training_stats = self.detector.training_stats if detector_trained else {}
 
-        if self.detector.is_fitted and self.state.alerts:
-            anomaly_results = [item.anomaly_result for item in self.state.alerts if item.anomaly_result]
+        if self.detector.is_fitted and self.state.reports_by_transaction_id:
+            anomaly_results = [
+                report.anomaly_result
+                for report in self.state.reports_by_transaction_id.values()
+                if report.anomaly_result is not None
+            ]
             if anomaly_results:
                 anomaly_stats = self.detector.get_anomaly_statistics(anomaly_results)
 
@@ -110,6 +162,7 @@ class TransactionAuditService:
         }
 
     def export_audit_log(self) -> str:
+        self._rehydrate_state_from_blockchain_if_needed()
         return json.dumps(
             {
                 "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -124,4 +177,3 @@ class TransactionAuditService:
             ensure_ascii=False,
             indent=2,
         )
-
