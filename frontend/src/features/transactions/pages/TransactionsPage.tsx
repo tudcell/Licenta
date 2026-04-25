@@ -17,6 +17,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table";
 import { useDebouncedValue } from "../../../hooks/useDebouncedValue";
 import { normalizeApiError, transactionsService } from "../../../services";
+import { useAuthStore } from "../../../stores/authStore";
 import type { PaginationMeta } from "../../../types/api";
 import type {
   CreateTransactionResult,
@@ -147,6 +148,9 @@ export function TransactionsPage() {
   const typeFilter = useDebouncedValue(typeFilterInput, 350);
   const senderFilter = useDebouncedValue(senderFilterInput, 350);
   const statusFilter = useDebouncedValue(statusFilterInput, 350);
+
+  const role = useAuthStore((state) => state.user?.role);
+  const isViewer = role === "viewer";
 
   const [walletName, setWalletName] = useState("");
   const [txType, setTxType] = useState("LOGIN");
@@ -311,12 +315,25 @@ export function TransactionsPage() {
       title="Transactions"
       description="Filter indexed transactions and simulate new events for blockchain/ML analysis."
       actions={
-        <Button type="button" onClick={() => setShowCreateDrawer(true)}>
+        <Button
+          type="button"
+          onClick={() => setShowCreateDrawer(true)}
+          disabled={isViewer}
+          title={isViewer ? "Viewer accounts cannot add transactions." : undefined}
+        >
           Add transaction
         </Button>
       }
     >
-      <Sheet open={showCreateDrawer} onOpenChange={setShowCreateDrawer}>
+      <Sheet
+        open={showCreateDrawer}
+        onOpenChange={(nextOpen) => {
+          if (isViewer) {
+            return;
+          }
+          setShowCreateDrawer(nextOpen);
+        }}
+      >
         <SheetContent side="right" className="overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Create transaction</SheetTitle>

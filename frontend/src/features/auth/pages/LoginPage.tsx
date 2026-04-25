@@ -28,8 +28,8 @@ export function LoginPage() {
   const error = useAuthStore((state) => state.error);
   const login = useAuthStore((state) => state.login);
 
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin123");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
   const loading = status === "authenticating";
@@ -79,7 +79,7 @@ export function LoginPage() {
               id="username"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              autoComplete="username"
+              autoComplete="off"
             />
           </div>
 
@@ -90,7 +90,7 @@ export function LoginPage() {
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              autoComplete="current-password"
+              autoComplete="new-password"
             />
           </div>
 
@@ -104,7 +104,7 @@ export function LoginPage() {
 
         <div className="text-sm text-muted-foreground">
           Need a viewer account?{" "}
-          <Link to="/register" className="text-primary hover:underline">
+          <Link to="/register" className="text-primary underline hover:underline">
             Create one
           </Link>
         </div>
