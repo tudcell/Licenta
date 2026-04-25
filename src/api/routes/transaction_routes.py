@@ -120,29 +120,17 @@ def get_transactions():
     if flagged is not None:
         flagged_value = flagged.lower() in ('1', 'true', 'yes')
 
-    indexed_txs, total = app_ctx.metadata_store.search_transactions(
+    data, pagination = app_ctx.transaction_service.list_indexed_transactions(
+        page=page,
+        per_page=per_page,
         sender=sender,
         tx_type=tx_type,
-        status=tx_status,
+        tx_status=tx_status,
         flagged=flagged_value,
-        page=page,
-        per_page=per_page
     )
 
-    pagination = {
-        'page': page,
-        'per_page': per_page,
-        'total': total,
-        'total_pages': max(1, (total + per_page - 1) // per_page),
-        'has_next': page * per_page < total,
-        'has_prev': page > 1,
-    }
-
     return api_success(
-        data={
-            'transactions': indexed_txs,
-            'count': len(indexed_txs)
-        },
+        data=data,
         pagination=pagination
     )
 
@@ -151,17 +139,9 @@ def get_transactions():
 @jwt_required()
 def get_transaction(transaction_id):
     app_ctx = get_app_ctx()
-    proof = app_ctx.blockchain_repository.verify_transaction_proof(transaction_id)
-    index_record = app_ctx.metadata_repository.get_transaction_index(transaction_id)
-
-    if proof:
-        payload = dict(proof)
-        if index_record:
-            payload['index_record'] = index_record
+    payload = app_ctx.transaction_service.get_transaction_details(transaction_id)
+    if payload:
         return api_success(data=payload)
-
-    if index_record:
-        return api_success(data={'index_record': index_record})
 
     return api_error("Transaction not found", 404, error_code="TX_NOT_FOUND")
 
@@ -171,12 +151,12 @@ def get_transaction(transaction_id):
 @jwt_required()
 def create_transaction():
     app_ctx = get_app_ctx()
-    data = request.get_json()
-    if not data:
+    request_payload = request.get_json()
+    if not request_payload:
         return api_error("Transaction data missing", 400)
 
     required_fields = ['transaction_type', 'data']
-    missing = [f for f in required_fields if f not in data]
+    missing = [f for f in required_fields if f not in request_payload]
     if missing:
         return api_error(
             f"Missing fields: {', '.join(missing)}",
@@ -186,18 +166,18 @@ def create_transaction():
         )
 
     try:
-        tx_type = TransactionType(data['transaction_type'])
+        tx_type = TransactionType(request_payload['transaction_type'])
     except ValueError:
         valid_types = [t.value for t in TransactionType]
         return api_error(
-            f"Invalid transaction type: {data['transaction_type']}",
+            f"Invalid transaction type: {request_payload['transaction_type']}",
             400,
             errors=[{'valid_types': valid_types}],
             error_code="INVALID_TX_TYPE"
         )
 
-    if 'wallet_name' in data and data.get('wallet_name') is not None:
-        if not isinstance(data.get('wallet_name'), str) or not data.get('wallet_name').strip():
+    if 'wallet_name' in request_payload and request_payload.get('wallet_name') is not None:
+        if not isinstance(request_payload.get('wallet_name'), str) or not request_payload.get('wallet_name').strip():
             return api_error(
                 "Invalid wallet_name",
                 400,
@@ -205,7 +185,7 @@ def create_transaction():
                 error_code="VALIDATION_ERROR"
             )
 
-    if 'metadata' in data and data.get('metadata') is not None and not isinstance(data.get('metadata'), dict):
+    if 'metadata' in request_payload and request_payload.get('metadata') is not None and not isinstance(request_payload.get('metadata'), dict):
         return api_error(
             "Invalid metadata",
             400,
@@ -214,7 +194,7 @@ def create_transaction():
         )
 
     username = get_jwt_identity()
-    validated_payload, payload_errors = _validate_transaction_payload(tx_type, data.get('data'), username)
+    validated_payload, payload_errors = _validate_transaction_payload(tx_type, request_payload.get('data'), username)
     if payload_errors:
         return api_error(
             "Invalid transaction payload",
@@ -230,8 +210,8 @@ def create_transaction():
             user_role=claims.get('role', 'viewer'),
             transaction_type=tx_type,
             transaction_data=validated_payload,
-            wallet_name=data.get('wallet_name'),
-            metadata=data.get('metadata'),
+            wallet_name=request_payload.get('wallet_name'),
+            metadata=request_payload.get('metadata'),
         )
     except ServiceError as exc:
         return api_error(exc.message, exc.status_code, errors=exc.errors, error_code=exc.error_code, data=exc.data)
@@ -255,7 +235,7 @@ def create_transaction():
 @jwt_required()
 def analyze_transaction(transaction_id):
     app_ctx = get_app_ctx()
-    report = app_ctx.analyzer.analyze_transaction(transaction_id)
+    report = app_ctx.transaction_service.analyze_transaction(transaction_id)
     if report:
         return api_success(data=report.to_dict())
     return api_error("Transaction not found", 404, error_code="TX_NOT_FOUND")

@@ -7,6 +7,7 @@ import os
 import sys
 import logging
 import secrets
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 from flask import Flask, send_from_directory, request
@@ -18,12 +19,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from src.domain.entities.blockchain import Blockchain, BlockchainConfig
 from src.domain.entities.wallet import WalletManager
+from src.domain.ml.anomaly_detector import AnomalyDetector
 from src.service.transaction_analyzer import TransactionAnalyzer
-from src.repository.blockchain_repository import BlockchainRepository
-from src.repository.metadata_repository import MetadataRepository
-from src.repository.model_repository import ModelRepository
-from src.repository.snapshot_repository import SnapshotRepository
-from src.repository.wallet_repository import WalletRepository
 from src.service.anomaly_service import AnomalyService
 from src.service.auth_service import AuthService
 from src.service.audit_service import AuditService
@@ -48,6 +45,23 @@ def _parse_cors_origins(raw_value: str):
     if not raw_value:
         return ['http://localhost:5000']
     return [item.strip() for item in raw_value.split(',') if item.strip()]
+
+
+def _build_backup_sources(app: Flask) -> dict[str, Path]:
+    return {
+        'blockchain': Path(app.blockchain.config.data_dir),
+        'wallets': Path(app.wallet_manager.wallets_dir),
+        'metadata_db': Path(app.metadata_store.db_path),
+        'ml_model': Path(app.ml_model_path),
+    }
+
+
+def _seed_metadata_index(app: Flask) -> None:
+    for block in app.blockchain:
+        for tx in block.transactions:
+            is_flagged = bool(tx.metadata.get('flagged'))
+            app.metadata_store.index_transaction(tx, block.index, tx_status='MINED', is_flagged=is_flagged)
+    logger.info("Existing transactions indexed in SQLite")
 
 
 def create_app(config: dict = None) -> Flask:
@@ -107,40 +121,36 @@ def create_app(config: dict = None) -> Flask:
     app.blockchain = Blockchain(blockchain_config)
     app.wallet_manager = WalletManager(os.path.join(data_dir, 'wallets'))
     app.analyzer = TransactionAnalyzer(blockchain=app.blockchain, auto_train=False, min_training_samples=30)
-    app.model_repository = ModelRepository()
-    app.snapshot_repository = SnapshotRepository()
     app.snapshot_retention_count = max(1, int(os.environ.get('SNAPSHOT_RETENTION_COUNT', app.config.get('SNAPSHOT_RETENTION_COUNT', 20))))
+    app.snapshot_dir = os.path.join(data_dir, 'backups')
 
     app.ml_model_path = os.environ.get('ML_MODEL_PATH', os.path.join(data_dir, 'ml_model.pkl'))
     if os.path.exists(app.ml_model_path):
         try:
-            app.analyzer.detector = app.model_repository.load_detector(app.ml_model_path)
+            app.analyzer.detector = AnomalyDetector.load(app.ml_model_path)
             logger.info("ML model loaded from %s", app.ml_model_path)
         except Exception as e:
             logger.warning("Could not load ML model: %s", e)
 
     app.metadata_store = MetadataStore(db_path=os.environ.get('METADATA_DB', os.path.join(data_dir, 'audit_metadata.db')))
-    app.blockchain_repository = BlockchainRepository(app.blockchain)
-    app.metadata_repository = MetadataRepository(app.metadata_store)
-    app.wallet_repository = WalletRepository(app.wallet_manager)
-    app.auth_service = AuthService(app.metadata_repository)
-    app.transaction_service = TransactionService(app.wallet_repository, app.metadata_repository, app.analyzer)
-    app.wallet_service = WalletService(app.wallet_repository, app.metadata_repository)
-    app.blockchain_service = BlockchainService(app.blockchain_repository, app.analyzer, app.metadata_repository)
+    app.auth_service = AuthService(metadata_store=app.metadata_store)
+    app.transaction_service = TransactionService(wallet_manager=app.wallet_manager, metadata_store=app.metadata_store, analyzer=app.analyzer)
+    app.wallet_service = WalletService(wallet_manager=app.wallet_manager, metadata_store=app.metadata_store)
+    app.blockchain_service = BlockchainService(blockchain=app.blockchain, analyzer=app.analyzer, metadata_store=app.metadata_store)
     app.anomaly_service = AnomalyService(
         analyzer=app.analyzer,
-        blockchain_repository=app.blockchain_repository,
-        metadata_repository=app.metadata_repository,
-        wallet_repository=app.wallet_repository,
-        model_repository=app.model_repository,
+        blockchain=app.blockchain,
+        metadata_store=app.metadata_store,
+        wallet_manager=app.wallet_manager,
     )
-    app.audit_service = AuditService(app.analyzer, app.snapshot_repository)
+    app.audit_service = AuditService(
+        analyzer=app.analyzer,
+        snapshot_dir=Path(app.snapshot_dir),
+        backup_sources=_build_backup_sources(app),
+        snapshot_retention_count=app.snapshot_retention_count,
+    )
 
-    for block in app.blockchain:
-        for tx in block.transactions:
-            is_flagged = bool(tx.metadata.get('flagged'))
-            app.metadata_store.index_transaction(tx, block.index, tx_status='MINED', is_flagged=is_flagged)
-    logger.info("Existing transactions indexed in SQLite")
+    _seed_metadata_index(app)
 
     admin_pass = os.environ.get('ADMIN_PASSWORD')
     if not app.metadata_store.get_user('admin'):
@@ -152,7 +162,7 @@ def create_app(config: dict = None) -> Flask:
 
     @jwt.token_in_blocklist_loader
     def check_if_token_revoked(_jwt_header, jwt_payload):
-        return app.metadata_repository.is_token_revoked(jwt_payload['jti'])
+        return app.metadata_store.is_token_revoked(jwt_payload['jti'])
 
     @jwt.expired_token_loader
     def expired_token_callback(_jwt_header, _jwt_payload):

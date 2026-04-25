@@ -4,7 +4,6 @@ Handles blockchain integrity checking and audit log export.
 """
 
 import logging
-from pathlib import Path
 
 from flask import Blueprint, request, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
@@ -17,17 +16,6 @@ from src.service.exceptions import ServiceError
 logger = logging.getLogger('blockchain_audit')
 
 audit_bp = Blueprint('audit', __name__, url_prefix='/api/audit')
-
-
-def _snapshot_paths(app_ctx):
-    data_dir = Path(app_ctx.blockchain.config.data_dir).parent
-    return data_dir / 'backups', {
-        'blockchain': Path(app_ctx.blockchain.config.data_dir),
-        'wallets': Path(app_ctx.wallet_manager.wallets_dir),
-        'metadata_db': Path(app_ctx.metadata_store.db_path),
-        'ml_model': Path(app_ctx.ml_model_path),
-    }
-
 
 @audit_bp.route('/integrity', methods=['GET'])
 @jwt_required()
@@ -57,9 +45,8 @@ def export_audit():
 @jwt_required()
 def get_backups():
     app_ctx = get_app_ctx()
-    snapshot_dir, _ = _snapshot_paths(app_ctx)
     try:
-        snapshots = app_ctx.audit_service.list_backups(get_jwt().get('role', 'viewer'), snapshot_dir)
+        snapshots = app_ctx.audit_service.list_backups(get_jwt().get('role', 'viewer'))
         return api_success(data={'snapshots': snapshots})
     except ServiceError as exc:
         return api_error(exc.message, exc.status_code, errors=exc.errors, error_code=exc.error_code, data=exc.data)
@@ -70,14 +57,10 @@ def get_backups():
 @jwt_required()
 def create_backup():
     app_ctx = get_app_ctx()
-    snapshot_dir, sources = _snapshot_paths(app_ctx)
     try:
         data = app_ctx.audit_service.create_backup(
             role=get_jwt().get('role', 'viewer'),
             requested_by=get_jwt_identity(),
-            snapshot_dir=snapshot_dir,
-            sources=sources,
-            retention_count=app_ctx.snapshot_retention_count,
         )
         return api_success(data=data, message='Snapshot created successfully', status_code=201)
     except ServiceError as exc:
@@ -89,17 +72,13 @@ def create_backup():
 @jwt_required()
 def restore_backup():
     app_ctx = get_app_ctx()
-    payload = request.get_json(silent=True) or {}
-    snapshot_name = (payload.get('snapshot_name') or '').strip()
-    snapshot_dir, targets = _snapshot_paths(app_ctx)
+    request_payload = request.get_json(silent=True) or {}
+    snapshot_name = (request_payload.get('snapshot_name') or '').strip()
     try:
         data = app_ctx.audit_service.restore_backup(
             role=get_jwt().get('role', 'viewer'),
             requested_by=get_jwt_identity(),
             snapshot_name=snapshot_name,
-            snapshot_dir=snapshot_dir,
-            targets=targets,
-            retention_count=app_ctx.snapshot_retention_count,
         )
         return api_success(data=data, message='Snapshot restored. Restart the app to reload in-memory state.')
     except ServiceError as exc:
@@ -110,16 +89,12 @@ def restore_backup():
 @jwt_required()
 def download_backup(snapshot_name: str):
     app_ctx = get_app_ctx()
-    snapshot_dir, _ = _snapshot_paths(app_ctx)
     try:
         snapshot_path = app_ctx.audit_service.get_backup_download_path(
             role=get_jwt().get('role', 'viewer'),
-            snapshot_dir=snapshot_dir,
             snapshot_name=snapshot_name,
         )
     except ServiceError as exc:
         return api_error(exc.message, exc.status_code, errors=exc.errors, error_code=exc.error_code, data=exc.data)
 
     return send_file(snapshot_path.resolve(), mimetype='application/zip', as_attachment=True, download_name=snapshot_name)
-
-

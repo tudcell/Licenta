@@ -6,17 +6,25 @@ import logging
 from pathlib import Path
 from typing import Dict
 
-from src.repository.snapshot_repository import SnapshotRepository
 from src.service.exceptions import ServiceError
 from src.service.transaction_analyzer import TransactionAnalyzer
+from src.utils.snapshot_manager import create_snapshot, get_snapshot_path, list_snapshots, restore_snapshot
 
 logger = logging.getLogger("blockchain_audit")
 
 
 class AuditService:
-    def __init__(self, analyzer: TransactionAnalyzer, snapshot_repository: SnapshotRepository):
+    def __init__(
+        self,
+        analyzer: TransactionAnalyzer,
+        snapshot_dir: Path,
+        backup_sources: Dict[str, Path],
+        snapshot_retention_count: int,
+    ):
         self.analyzer = analyzer
-        self.snapshot_repository = snapshot_repository
+        self.snapshot_dir = snapshot_dir
+        self.backup_sources = backup_sources
+        self.snapshot_retention_count = snapshot_retention_count
 
     def require_admin(self, role: str) -> None:
         if role != "admin":
@@ -29,20 +37,17 @@ class AuditService:
         self.require_admin(role)
         return self.analyzer.export_audit_log()
 
-    def list_backups(self, role: str, snapshot_dir: Path) -> list[dict]:
+    def list_backups(self, role: str) -> list[dict]:
         self.require_admin(role)
-        return self.snapshot_repository.list_snapshots(snapshot_dir)
+        return list_snapshots(self.snapshot_dir)
 
     def create_backup(
         self,
         role: str,
         requested_by: str,
-        snapshot_dir: Path,
-        sources: Dict[str, Path],
-        retention_count: int,
     ) -> dict:
         self.require_admin(role)
-        snapshot = self.snapshot_repository.create_snapshot(snapshot_dir, sources, retention_count=retention_count)
+        snapshot = create_snapshot(self.snapshot_dir, self.backup_sources, retention_count=self.snapshot_retention_count)
         logger.info("Snapshot created by %s: %s", requested_by, snapshot["name"])
         return {
             "snapshot_name": snapshot["name"],
@@ -55,22 +60,19 @@ class AuditService:
         role: str,
         requested_by: str,
         snapshot_name: str,
-        snapshot_dir: Path,
-        targets: Dict[str, Path],
-        retention_count: int,
     ) -> dict:
         self.require_admin(role)
         if not snapshot_name:
             raise ServiceError("Field 'snapshot_name' is required", status_code=400, error_code="VALIDATION_ERROR")
 
-        pre_restore_snapshot = self.snapshot_repository.create_snapshot(
-            snapshot_dir,
-            targets,
-            retention_count=retention_count,
+        pre_restore_snapshot = create_snapshot(
+            self.snapshot_dir,
+            self.backup_sources,
+            retention_count=self.snapshot_retention_count,
         )
 
         try:
-            restore_result = self.snapshot_repository.restore_snapshot(snapshot_dir, snapshot_name, targets)
+            restore_result = restore_snapshot(self.snapshot_dir, snapshot_name, self.backup_sources)
         except FileNotFoundError as exc:
             raise ServiceError(str(exc), status_code=404, error_code="SNAPSHOT_NOT_FOUND") from exc
         except ValueError as exc:
@@ -93,12 +95,11 @@ class AuditService:
             "restart_required": True,
         }
 
-    def get_backup_download_path(self, role: str, snapshot_dir: Path, snapshot_name: str) -> Path:
+    def get_backup_download_path(self, role: str, snapshot_name: str) -> Path:
         self.require_admin(role)
         try:
-            return self.snapshot_repository.get_snapshot_path(snapshot_dir, snapshot_name)
+            return get_snapshot_path(self.snapshot_dir, snapshot_name)
         except FileNotFoundError as exc:
             raise ServiceError(str(exc), status_code=404, error_code="SNAPSHOT_NOT_FOUND") from exc
         except ValueError as exc:
             raise ServiceError(str(exc), status_code=400, error_code="INVALID_SNAPSHOT") from exc
-
