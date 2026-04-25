@@ -120,29 +120,17 @@ def get_transactions():
     if flagged is not None:
         flagged_value = flagged.lower() in ('1', 'true', 'yes')
 
-    indexed_txs, total = app_ctx.metadata_store.search_transactions(
+    data, pagination = app_ctx.transaction_service.list_indexed_transactions(
+        page=page,
+        per_page=per_page,
         sender=sender,
         tx_type=tx_type,
-        status=tx_status,
+        tx_status=tx_status,
         flagged=flagged_value,
-        page=page,
-        per_page=per_page
     )
 
-    pagination = {
-        'page': page,
-        'per_page': per_page,
-        'total': total,
-        'total_pages': max(1, (total + per_page - 1) // per_page),
-        'has_next': page * per_page < total,
-        'has_prev': page > 1,
-    }
-
     return api_success(
-        data={
-            'transactions': indexed_txs,
-            'count': len(indexed_txs)
-        },
+        data=data,
         pagination=pagination
     )
 
@@ -151,17 +139,9 @@ def get_transactions():
 @jwt_required()
 def get_transaction(transaction_id):
     app_ctx = get_app_ctx()
-    proof = app_ctx.blockchain_repository.verify_transaction_proof(transaction_id)
-    index_record = app_ctx.metadata_repository.get_transaction_index(transaction_id)
-
-    if proof:
-        payload = dict(proof)
-        if index_record:
-            payload['index_record'] = index_record
+    payload = app_ctx.transaction_service.get_transaction_details(transaction_id)
+    if payload:
         return api_success(data=payload)
-
-    if index_record:
-        return api_success(data={'index_record': index_record})
 
     return api_error("Transaction not found", 404, error_code="TX_NOT_FOUND")
 
@@ -255,7 +235,7 @@ def create_transaction():
 @jwt_required()
 def analyze_transaction(transaction_id):
     app_ctx = get_app_ctx()
-    report = app_ctx.analyzer.analyze_transaction(transaction_id)
+    report = app_ctx.transaction_service.analyze_transaction(transaction_id)
     if report:
         return api_success(data=report.to_dict())
     return api_error("Transaction not found", 404, error_code="TX_NOT_FOUND")

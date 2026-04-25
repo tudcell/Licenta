@@ -64,3 +64,21 @@ def test_service_layer_does_not_depend_on_api_layer():
     assert not violations, "\n".join(["Service layer import violations:", *violations])
 
 
+def test_api_routes_do_not_depend_on_repository_or_database_or_domain_entities():
+    routes_dir = SRC / "api" / "routes"
+    forbidden_prefixes = ("src.repository", "src.api.database")
+
+    violations: list[str] = []
+    for path in _iter_python_files(routes_dir):
+        imports = _collect_imports(path)
+        forbidden = [name for name in imports if name.startswith(forbidden_prefixes)]
+        if forbidden:
+            violations.append(f"{path.relative_to(ROOT)} -> {sorted(forbidden)}")
+
+    assert not violations, "\n".join(["API route dependency violations:", *violations])
+
+
+def test_repository_layer_contains_only_stateful_repository():
+    repository_dir = SRC / "repository"
+    repo_files = sorted(path.name for path in _iter_python_files(repository_dir) if path.name != "__init__.py")
+    assert repo_files == ["analysis_state_repository.py"], f"Unexpected repository files: {repo_files}"

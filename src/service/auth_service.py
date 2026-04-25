@@ -1,11 +1,11 @@
-"""Authentication use-cases orchestrating repository and password policies."""
+"""Authentication use-cases orchestrating metadata storage and password policies."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Optional
 
-from src.repository.metadata_repository import MetadataRepository
+from src.infrastructure.metadata_store import MetadataStore
 from src.service.exceptions import ServiceError
 from src.utils.password_security import hash_password, needs_rehash, verify_password
 
@@ -18,19 +18,19 @@ class AuthenticatedUser:
 
 
 class AuthService:
-    def __init__(self, metadata_repository: MetadataRepository):
-        self.metadata_repository = metadata_repository
+    def __init__(self, metadata_store: MetadataStore):
+        self.metadata_store = metadata_store
 
     def authenticate(self, username: str, password: str) -> AuthenticatedUser:
-        user = self.metadata_repository.get_user(username)
+        user = self.metadata_store.get_user(username)
         if not user or not verify_password(password, user["password_hash"]):
             raise ServiceError("Invalid credentials", status_code=401, error_code="AUTH_FAILED")
 
         if needs_rehash(user["password_hash"]):
-            self.metadata_repository.update_password_hash(username, hash_password(password))
-            user = self.metadata_repository.get_user(username)
+            self.metadata_store.update_password_hash(username, hash_password(password))
+            user = self.metadata_store.get_user(username)
 
-        self.metadata_repository.update_last_login(username)
+        self.metadata_store.update_last_login(username)
         return AuthenticatedUser(username=username, role=user["role"], wallet_name=user.get("wallet_name"))
 
     def register_user(self, requester_role: str, username: str, password: str, role: str, wallet_name: Optional[str]) -> dict:
@@ -44,7 +44,7 @@ class AuthService:
         if role not in ("admin", "operator", "viewer"):
             raise ServiceError("Invalid role. Options: admin, operator, viewer", status_code=400)
 
-        success = self.metadata_repository.create_user(
+        success = self.metadata_store.create_user(
             username=username,
             password_hash=hash_password(password),
             role=role,
@@ -61,7 +61,7 @@ class AuthService:
         if not password or len(password) < 8:
             raise ServiceError("Password must have at least 8 characters", status_code=400)
 
-        success = self.metadata_repository.create_user(
+        success = self.metadata_store.create_user(
             username=username,
             password_hash=hash_password(password),
             role="viewer",
@@ -73,5 +73,7 @@ class AuthService:
         return {"username": username, "role": "viewer", "wallet_name": None}
 
     def revoke_token(self, jti: str) -> None:
-        self.metadata_repository.revoke_token(jti)
+        self.metadata_store.revoke_token(jti)
 
+    def get_user(self, username: str):
+        return self.metadata_store.get_user(username)

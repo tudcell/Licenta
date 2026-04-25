@@ -63,7 +63,7 @@ def login():
 def refresh():
     app_ctx = get_app_ctx()
     identity = get_jwt_identity()
-    user = app_ctx.metadata_store.get_user(identity)
+    user = app_ctx.auth_service.get_user(identity)
     if not user:
         return api_error("User account no longer exists", 401, error_code="AUTH_FAILED")
     access_token = create_access_token(
@@ -143,4 +143,3 @@ def register_viewer():
         message="Viewer account created successfully",
         status_code=201
     )
-
