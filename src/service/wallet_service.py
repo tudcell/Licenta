@@ -83,7 +83,9 @@ class WalletService:
 
     @staticmethod
     def _filter_visible_wallets(wallets: list[dict], role: str, user: dict | None) -> list[dict]:
-        if role == "admin" or not user or not user.get("wallet_name"):
+        if role == "admin":
             return wallets
+        if not user or not user.get("wallet_name"):
+            return []
         assigned_wallet_name = user["wallet_name"]
         return [wallet for wallet in wallets if wallet["name"] == assigned_wallet_name]
