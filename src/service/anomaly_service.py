@@ -11,21 +11,11 @@ from src.domain.entities.blockchain import Blockchain
 from src.domain.entities.wallet import WalletManager
 from src.service.exceptions import ServiceError
 from src.service.transaction_analyzer import TransactionAnalyzer
+from src.utils.pagination import build_pagination_metadata
 
 logger = logging.getLogger("blockchain_audit")
 
 ALLOWED_TRAINING_MODES = {"blockchain", "synthetic"}
-
-
-def _pagination(page: int, per_page: int, total: int) -> dict:
-    return {
-        "page": page,
-        "per_page": per_page,
-        "total": total,
-        "total_pages": max(1, (total + per_page - 1) // per_page),
-        "has_next": page * per_page < total,
-        "has_prev": page > 1,
-    }
 
 
 class AnomalyService:
@@ -105,9 +95,7 @@ class AnomalyService:
         return {**analyzer_stats, "persistent_alerts": db_alert_stats}
 
     def get_alerts(self, page: int, per_page: int, severity: str = None, resolved_param: str = None) -> Tuple[dict, dict]:
-        is_resolved = None
-        if resolved_param is not None:
-            is_resolved = resolved_param.lower() in ("true", "1", "yes")
+        is_resolved = self._parse_resolved_filter(resolved_param)
 
         alerts, total = self.metadata_store.get_alerts(
             page=page,
@@ -115,7 +103,7 @@ class AnomalyService:
             severity=severity,
             is_resolved=is_resolved,
         )
-        return {"alerts": alerts, "count": len(alerts)}, _pagination(page, per_page, total)
+        return {"alerts": alerts, "count": len(alerts)}, build_pagination_metadata(page, per_page, total)
 
     def resolve_alert(self, role: str, alert_id: int, resolved_by: str) -> None:
         self._require_admin_or_operator(role)
@@ -231,3 +219,9 @@ class AnomalyService:
             "model_saved": model_path,
             "detector_fitted": self.analyzer.detector.is_fitted,
         }, f"Detector retrained with {len(clean_transactions)} clean recent transactions"
+
+    @staticmethod
+    def _parse_resolved_filter(resolved_param: str | None) -> bool | None:
+        if resolved_param is None:
+            return None
+        return resolved_param.lower() in ("true", "1", "yes")

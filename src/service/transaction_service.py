@@ -11,6 +11,7 @@ from src.domain.entities.transaction import TransactionType
 from src.domain.entities.wallet import WalletManager
 from src.service.exceptions import ServiceError
 from src.service.transaction_analyzer import TransactionAnalyzer
+from src.utils.pagination import build_pagination_metadata
 
 
 @dataclass
@@ -173,14 +174,7 @@ class TransactionService:
             page=page,
             per_page=per_page,
         )
-        pagination = {
-            "page": page,
-            "per_page": per_page,
-            "total": total,
-            "total_pages": max(1, (total + per_page - 1) // per_page),
-            "has_next": page * per_page < total,
-            "has_prev": page > 1,
-        }
+        pagination = build_pagination_metadata(page, per_page, total)
         return {"transactions": indexed_txs, "count": len(indexed_txs)}, pagination
 
     def get_transaction_details(self, transaction_id: str) -> Optional[dict]:
