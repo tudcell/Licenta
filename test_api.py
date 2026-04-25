@@ -53,6 +53,21 @@ with app.test_client() as client:
     assert r.get_json()['error']['code'] == 'AUTH_FAILED'
     print("[OK] 4. Invalid credentials -> error code AUTH_FAILED")
 
+    # 4a. Public viewer registration (no JWT required)
+    self_registered_viewer = f"self_viewer_{uuid4().hex[:8]}"
+    r = client.post('/api/auth/register-viewer', json={'username': self_registered_viewer, 'password': 'pass12345'})
+    assert r.status_code == 201
+    created_viewer = r.get_json()['data']
+    assert created_viewer['username'] == self_registered_viewer
+    assert created_viewer['role'] == 'viewer'
+    print("[OK] 4a. Public viewer registration")
+
+    # 4b. Newly created viewer can authenticate
+    r = client.post('/api/auth/login', json={'username': self_registered_viewer, 'password': 'pass12345'})
+    assert r.status_code == 200
+    assert r.get_json()['data']['user']['role'] == 'viewer'
+    print("[OK] 4b. Self-registered viewer login")
+
     # 5. Blockchain stats (JWT required)
     r = client.get('/api/blockchain/stats', headers=headers)
     assert r.status_code == 200

@@ -1,6 +1,6 @@
 import { apiClient } from "./http";
 import type { ApiSuccess } from "../types/api";
-import type { AuthUser, LoginPayload, LoginResponse } from "../types/auth";
+import type { AuthUser, LoginPayload, LoginResponse, RegisterViewerPayload, RegisterViewerResponse } from "../types/auth";
 
 interface LoginApiUser {
   username: string;
@@ -16,6 +16,12 @@ interface LoginApiPayload {
 
 interface RefreshPayload {
   access_token: string;
+}
+
+interface RegisterViewerApiPayload {
+  username: string;
+  role: AuthUser["role"];
+  wallet_name?: string | null;
 }
 
 const mapUser = (user: LoginApiUser): AuthUser => ({
@@ -58,6 +64,22 @@ export const authService = {
 
   async logout(): Promise<void> {
     await apiClient.post("/api/auth/logout", {});
+  },
+
+  async registerViewer(payload: RegisterViewerPayload): Promise<RegisterViewerResponse> {
+    const response = await apiClient.post<ApiSuccess<RegisterViewerApiPayload>>(
+      "/api/auth/register-viewer",
+      payload,
+      { skipAuth: true },
+    );
+    const data = response.data.data;
+    if (!data) {
+      throw new Error("Register response missing data payload");
+    }
+
+    return {
+      user: mapUser(data),
+    };
   },
 };
 

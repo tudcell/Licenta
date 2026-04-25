@@ -151,11 +151,11 @@ def create_app(config: dict = None) -> Flask:
         logger.info("Admin user created")
 
     @jwt.token_in_blocklist_loader
-    def check_if_token_revoked(jwt_header, jwt_payload):
+    def check_if_token_revoked(_jwt_header, jwt_payload):
         return app.metadata_repository.is_token_revoked(jwt_payload['jti'])
 
     @jwt.expired_token_loader
-    def expired_token_callback(jwt_header, jwt_payload):
+    def expired_token_callback(_jwt_header, _jwt_payload):
         return api_error("Access token has expired", 401, error_code="TOKEN_EXPIRED")
 
     @jwt.invalid_token_loader

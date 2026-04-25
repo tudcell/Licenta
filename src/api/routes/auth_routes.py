@@ -118,3 +118,29 @@ def register():
         message="User created successfully",
         status_code=201
     )
+
+
+@auth_bp.route('/register-viewer', methods=['POST'])
+@rate_limit(limit=20, window_seconds=60, scope='auth_register_viewer')
+def register_viewer():
+    app_ctx = get_app_ctx()
+
+    data = request.get_json()
+    if not data:
+        return api_error("Data missing", 400)
+
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+
+    try:
+        created_user = app_ctx.auth_service.register_viewer(username=username, password=password)
+    except ServiceError as exc:
+        return api_error(exc.message, exc.status_code, errors=exc.errors, error_code=exc.error_code, data=exc.data)
+
+    logger.info("Viewer user created: %s", username)
+    return api_success(
+        data=created_user,
+        message="Viewer account created successfully",
+        status_code=201
+    )
+

@@ -84,24 +84,6 @@ class Wallet:
 		)
 		return self.sign_transaction(tx)
 
-	def create_transfer(self, recipient_address: str, amount: float, currency: str = "RON") -> Transaction:
-		tx = TransactionFactory.create_transfer_event(
-			sender_address=self.address,
-			recipient_address=recipient_address,
-			amount=amount,
-			currency=currency,
-		)
-		return self.sign_transaction(tx)
-
-	def create_data_access(self, resource_id: str, action: str, success: bool = True) -> Transaction:
-		tx = TransactionFactory.create_data_access_event(
-			user_id=self.name,
-			sender_address=self.address,
-			resource_id=resource_id,
-			action=action,
-			success=success,
-		)
-		return self.sign_transaction(tx)
 
 	def to_dict(self, include_private_key: bool = False) -> Dict[str, Any]:
 		data = {
@@ -132,10 +114,6 @@ class Wallet:
 		wallet.created_at = data["created_at"]
 		wallet.metadata = data.get("metadata", {})
 		return wallet
-
-	def verify_ownership(self, message: str, signature: str) -> bool:
-		return DigitalSignature.verify(self._key_pair.public_key, message, signature)
-
 
 class WalletManager:
 	def __init__(self, wallets_dir: str = "wallets"):
@@ -169,17 +147,6 @@ class WalletManager:
 				if wallet:
 					wallets.append(wallet.to_dict(include_private_key=False))
 		return wallets
-
-	def get_wallet_by_address(self, address: str) -> Optional[Wallet]:
-		for wallet in self.wallets.values():
-			if wallet.address == address:
-				return wallet
-		for filename in os.listdir(self.wallets_dir):
-			if filename.endswith('.json'):
-				wallet = self.get_wallet(filename[:-5])
-				if wallet and wallet.address == address:
-					return wallet
-		return None
 
 
 __all__ = ["Wallet", "WalletManager"]

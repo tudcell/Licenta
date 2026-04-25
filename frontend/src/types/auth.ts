@@ -17,3 +17,12 @@ export interface LoginResponse {
   user: AuthUser;
 }
 
+export interface RegisterViewerPayload {
+  username: string;
+  password: string;
+}
+
+export interface RegisterViewerResponse {
+  user: AuthUser;
+}
+

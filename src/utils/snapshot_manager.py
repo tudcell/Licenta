@@ -18,9 +18,6 @@ def _safe_name(name: str) -> bool:
     return name.startswith(SNAPSHOT_PREFIX) and name.endswith(".zip") and ".." not in name and "/" not in name and "\\" not in name
 
 
-def is_snapshot_name_safe(snapshot_name: str) -> bool:
-    return _safe_name(snapshot_name)
-
 
 def get_snapshot_path(snapshot_dir: Path, snapshot_name: str) -> Path:
     if not _safe_name(snapshot_name):

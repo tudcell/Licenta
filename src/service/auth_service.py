@@ -55,6 +55,23 @@ class AuthService:
 
         return {"username": username, "role": role, "wallet_name": wallet_name}
 
+    def register_viewer(self, username: str, password: str) -> dict:
+        if not username or len(username) < 3:
+            raise ServiceError("Username must have at least 3 characters", status_code=400)
+        if not password or len(password) < 8:
+            raise ServiceError("Password must have at least 8 characters", status_code=400)
+
+        success = self.metadata_repository.create_user(
+            username=username,
+            password_hash=hash_password(password),
+            role="viewer",
+            wallet_name=None,
+        )
+        if not success:
+            raise ServiceError(f"User '{username}' already exists", status_code=409, error_code="USER_EXISTS")
+
+        return {"username": username, "role": "viewer", "wallet_name": None}
+
     def revoke_token(self, jti: str) -> None:
         self.metadata_repository.revoke_token(jti)
 

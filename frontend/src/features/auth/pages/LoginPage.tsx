@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { ErrorState } from "../../../components/states/ErrorState";
 import { Button } from "../../../components/ui/button";
@@ -101,6 +101,13 @@ export function LoginPage() {
 
         {localError ? <ErrorState title="Validation error" message={localError} /> : null}
         {error ? <ErrorState message={error} /> : null}
+
+        <div className="text-sm text-muted-foreground">
+          Need a viewer account?{" "}
+          <Link to="/register" className="text-primary hover:underline">
+            Create one
+          </Link>
+        </div>
       </CardContent>
     </Card>
   );

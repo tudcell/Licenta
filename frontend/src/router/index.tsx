@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import { AuthLayout } from "../layouts/AuthLayout";
 import { AppLayout } from "../layouts/AppLayout";
 import { LoginPage } from "../features/auth/pages/LoginPage";
+import { RegisterPage } from "../features/auth/pages/RegisterPage";
 import { DashboardPage } from "../features/dashboard/pages/DashboardPage";
 import { TransactionsPage } from "../features/transactions/pages/TransactionsPage";
 import { TransactionDetailPage } from "../features/transactions/pages/TransactionDetailPage";
@@ -24,6 +25,11 @@ export const router = createBrowserRouter([
     path: "/login",
     element: <AuthLayout />,
     children: [{ index: true, element: <LoginPage /> }],
+  },
+  {
+    path: "/register",
+    element: <AuthLayout />,
+    children: [{ index: true, element: <RegisterPage /> }],
   },
   {
     element: <RequireAuth />,

@@ -220,8 +220,6 @@ class MetadataStore:
         finally:
             conn.close()
 
-    def transaction_exists(self, transaction_id: str) -> bool:
-        return self.get_transaction_index(transaction_id) is not None
 
     def save_alert(self, report) -> int:
         conn = self._get_connection()
