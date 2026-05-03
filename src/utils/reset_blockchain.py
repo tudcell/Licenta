@@ -30,7 +30,7 @@ def reset_blockchain(project_root: Path | None = None) -> None:
         "ml_model": data_dir / "ml_model.pkl",
     }
     snapshot = create_snapshot(snapshot_dir, sources)
-    print(f"📦 Pre-reset snapshot created: {snapshot['name']}")
+    print(f" Pre-reset snapshot created: {snapshot['name']}")
 
     removed: list[str] = []
 
@@ -55,7 +55,7 @@ def reset_blockchain(project_root: Path | None = None) -> None:
 
 
 if __name__ == "__main__":
-    confirm = input("⚠️ This will delete blockchain, wallets, DB, and saved ML model. Continue? (yes/no): ")
+    confirm = input("This will delete blockchain, wallets, DB, and saved ML model. Continue? (yes/no): ")
     if confirm.strip().lower() == "yes":
         reset_blockchain()
     else:
