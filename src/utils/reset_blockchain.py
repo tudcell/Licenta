@@ -1,55 +1,62 @@
-"""
-Script to delete all blockchain data and reset the system.
-"""
+"""Reset runtime blockchain and metadata state for a clean local demo."""
 
-import os
+from __future__ import annotations
+
+import shutil
 from pathlib import Path
 
+from src.utils.snapshot_manager import create_snapshot
 
-def reset_blockchain():
-    """Deletes all blockchain data files."""
 
-    # Get project root directory
-    project_root = Path(__file__).parent.parent.parent
-    data_dir = project_root / "data"
+RUNTIME_SUBPATHS = [
+    "data/blockchain",
+    "data/wallets",
+    "data/training_wallets",
+    "data/demo_wallets",
+    "data/ml_model.pkl",
+    "data/audit_metadata.db",
+]
 
-    files_to_delete = [
-        "blockchain.json",
-        "wallets.json",
-        "mempool.json",
-        "quarantine.json",
-        "alerts.json",
-        "audit_log.json"
-    ]
 
-    deleted = []
+def reset_blockchain(project_root: Path | None = None) -> None:
+    root = project_root or Path(__file__).resolve().parents[2]
+    data_dir = root / "data"
+    snapshot_dir = data_dir / "backups"
 
-    for filename in files_to_delete:
-        filepath = data_dir / filename
-        if filepath.exists():
-            os.remove(filepath)
-            deleted.append(filename)
-            print(f"✓ Deleted: {filepath}")
+    sources = {
+        "blockchain": data_dir / "blockchain",
+        "wallets": data_dir / "wallets",
+        "metadata_db": data_dir / "audit_metadata.db",
+        "ml_model": data_dir / "ml_model.pkl",
+    }
+    snapshot = create_snapshot(snapshot_dir, sources)
+    print(f" Pre-reset snapshot created: {snapshot['name']}")
 
-    # Also check for any .json files in data directory
-    if data_dir.exists():
-        for file in data_dir.glob("*.json"):
-            if file.name not in files_to_delete:
-                os.remove(file)
-                deleted.append(file.name)
-                print(f"✓ Deleted: {file}")
+    removed: list[str] = []
 
-    if deleted:
-        print(f"\n🗑️ Deleted {len(deleted)} file(s)")
+    for relative_path in RUNTIME_SUBPATHS:
+        target = root / relative_path
+        if not target.exists():
+            continue
+        if target.is_dir():
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+        removed.append(relative_path)
+        print(f"✓ Removed: {target}")
+
+    data_dir.mkdir(exist_ok=True)
+
+    if removed:
+        print(f"\n🗑️ Removed {len(removed)} runtime path(s)")
     else:
-        print("No blockchain data files found to delete")
-
-    print("✅ Blockchain reset complete!")
+        print("No runtime data found to delete")
+    print("✅ Reset complete. Start the app again to recreate runtime state.")
 
 
 if __name__ == "__main__":
-    confirm = input("⚠️ This will DELETE ALL blockchain data. Continue? (yes/no): ")
-    if confirm.lower() == "yes":
+    confirm = input("This will delete blockchain, wallets, DB, and saved ML model. Continue? (yes/no): ")
+    if confirm.strip().lower() == "yes":
         reset_blockchain()
     else:
         print("Cancelled.")

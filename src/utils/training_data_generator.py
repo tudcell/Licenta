@@ -7,8 +7,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple, Optional
 
 
-from src.blockchain.transaction import Transaction, TransactionType, TransactionFactory
-from src.blockchain.wallet import WalletManager, Wallet
+from src.domain.entities.transaction import Transaction, TransactionType, TransactionFactory
+from src.domain.entities.wallet import WalletManager, Wallet
 
 
 @dataclass
@@ -479,7 +479,7 @@ def train_detector_with_quality_data(detector: 'AnomalyDetector', normal_count: 
 
 
 if __name__ == '__main__':
-    from src.ml.anomaly_detector import AnomalyDetector
+    from src.domain.ml.anomaly_detector import AnomalyDetector
 
     print('=' * 60)
     print('Training Anomaly Detector with Quality Data')
@@ -492,5 +492,8 @@ if __name__ == '__main__':
     print(f"Samples: {stats['samples']}")
     print(f"Model saved to: {stats['model_saved']}")
     print('Evaluation:')
+    print(f"  f1_score: {stats['evaluation'].get('f1_score', 0.0)}")
     for key, value in stats['evaluation'].items():
+        if key == 'f1_score':
+            continue
         print(f"  {key}: {value}")

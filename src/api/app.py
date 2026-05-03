@@ -7,22 +7,30 @@ import os
 import sys
 import logging
 import secrets
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 from flask import Flask, send_from_directory, request
 from flask_cors import CORS
-from flask_socketio import emit, disconnect
+from flask_socketio import emit
 from flask_jwt_extended import decode_token
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from src.blockchain.blockchain import Blockchain, BlockchainConfig
-from src.blockchain.wallet import WalletManager
-from src.ml.transaction_analyzer import TransactionAnalyzer
+from src.domain.entities.blockchain import Blockchain, BlockchainConfig
+from src.domain.entities.wallet import WalletManager
+from src.domain.ml.anomaly_detector import AnomalyDetector
+from src.service.transaction_analyzer import TransactionAnalyzer
+from src.service.anomaly_service import AnomalyService
+from src.service.auth_service import AuthService
+from src.service.audit_service import AuditService
+from src.service.blockchain_service import BlockchainService
+from src.service.transaction_service import TransactionService
+from src.service.wallet_service import WalletService
+from src.utils.password_security import hash_password
 
 from .extensions import jwt, socketio
 from .database import MetadataStore
-from .auth import hash_password
 from .responses import api_error
 
 logging.basicConfig(
@@ -37,6 +45,23 @@ def _parse_cors_origins(raw_value: str):
     if not raw_value:
         return ['http://localhost:5000']
     return [item.strip() for item in raw_value.split(',') if item.strip()]
+
+
+def _build_backup_sources(app: Flask) -> dict[str, Path]:
+    return {
+        'blockchain': Path(app.blockchain.config.data_dir),
+        'wallets': Path(app.wallet_manager.wallets_dir),
+        'metadata_db': Path(app.metadata_store.db_path),
+        'ml_model': Path(app.ml_model_path),
+    }
+
+
+def _seed_metadata_index(app: Flask) -> None:
+    for block in app.blockchain:
+        for tx in block.transactions:
+            is_flagged = bool(tx.metadata.get('flagged'))
+            app.metadata_store.index_transaction(tx, block.index, tx_status='MINED', is_flagged=is_flagged)
+    logger.info("Existing transactions indexed in SQLite")
 
 
 def create_app(config: dict = None) -> Flask:
@@ -64,7 +89,12 @@ def create_app(config: dict = None) -> Flask:
 
     os.environ.setdefault('WALLET_ENCRYPTION_KEY', app.config['JWT_SECRET_KEY'])
 
-    cors_origins = _parse_cors_origins(os.environ.get('CORS_ORIGINS', 'http://localhost:5000,http://127.0.0.1:5000'))
+    cors_origins = _parse_cors_origins(
+        os.environ.get(
+            'CORS_ORIGINS',
+            'http://localhost:5000,http://127.0.0.1:5000,http://localhost:5173,http://127.0.0.1:5173'
+        )
+    )
     CORS(app, resources={
         r"/api/*": {
             "origins": cors_origins,
@@ -77,7 +107,7 @@ def create_app(config: dict = None) -> Flask:
     })
 
     jwt.init_app(app)
-    socketio.init_app(app, cors_allowed_origins=cors_origins, async_mode='threading', always_connect=True)
+    socketio.init_app(app, cors_allowed_origins=cors_origins, async_mode='threading')
 
     data_dir = os.environ.get('DATA_DIR', 'data')
     os.makedirs(data_dir, exist_ok=True)
@@ -91,24 +121,36 @@ def create_app(config: dict = None) -> Flask:
     app.blockchain = Blockchain(blockchain_config)
     app.wallet_manager = WalletManager(os.path.join(data_dir, 'wallets'))
     app.analyzer = TransactionAnalyzer(blockchain=app.blockchain, auto_train=False, min_training_samples=30)
+    app.snapshot_retention_count = max(1, int(os.environ.get('SNAPSHOT_RETENTION_COUNT', app.config.get('SNAPSHOT_RETENTION_COUNT', 20))))
+    app.snapshot_dir = os.path.join(data_dir, 'backups')
 
     app.ml_model_path = os.environ.get('ML_MODEL_PATH', os.path.join(data_dir, 'ml_model.pkl'))
     if os.path.exists(app.ml_model_path):
         try:
-            from src.ml.anomaly_detector import AnomalyDetector
             app.analyzer.detector = AnomalyDetector.load(app.ml_model_path)
             logger.info("ML model loaded from %s", app.ml_model_path)
         except Exception as e:
             logger.warning("Could not load ML model: %s", e)
 
     app.metadata_store = MetadataStore(db_path=os.environ.get('METADATA_DB', os.path.join(data_dir, 'audit_metadata.db')))
+    app.auth_service = AuthService(metadata_store=app.metadata_store)
+    app.transaction_service = TransactionService(wallet_manager=app.wallet_manager, metadata_store=app.metadata_store, analyzer=app.analyzer)
+    app.wallet_service = WalletService(wallet_manager=app.wallet_manager, metadata_store=app.metadata_store)
+    app.blockchain_service = BlockchainService(blockchain=app.blockchain, analyzer=app.analyzer, metadata_store=app.metadata_store)
+    app.anomaly_service = AnomalyService(
+        analyzer=app.analyzer,
+        blockchain=app.blockchain,
+        metadata_store=app.metadata_store,
+        wallet_manager=app.wallet_manager,
+    )
+    app.audit_service = AuditService(
+        analyzer=app.analyzer,
+        snapshot_dir=Path(app.snapshot_dir),
+        backup_sources=_build_backup_sources(app),
+        snapshot_retention_count=app.snapshot_retention_count,
+    )
 
-    for block in app.blockchain:
-        for tx in block.transactions:
-            is_flagged = bool(tx.metadata.get('flagged'))
-            status = 'FLAGGED' if is_flagged else 'MINED'
-            app.metadata_store.index_transaction(tx, block.index, tx_status=status, is_flagged=is_flagged)
-    logger.info("Existing transactions indexed in SQLite")
+    _seed_metadata_index(app)
 
     admin_pass = os.environ.get('ADMIN_PASSWORD')
     if not app.metadata_store.get_user('admin'):
@@ -119,11 +161,11 @@ def create_app(config: dict = None) -> Flask:
         logger.info("Admin user created")
 
     @jwt.token_in_blocklist_loader
-    def check_if_token_revoked(jwt_header, jwt_payload):
+    def check_if_token_revoked(_jwt_header, jwt_payload):
         return app.metadata_store.is_token_revoked(jwt_payload['jti'])
 
     @jwt.expired_token_loader
-    def expired_token_callback(jwt_header, jwt_payload):
+    def expired_token_callback(_jwt_header, _jwt_payload):
         return api_error("Access token has expired", 401, error_code="TOKEN_EXPIRED")
 
     @jwt.invalid_token_loader
@@ -151,19 +193,47 @@ def create_app(config: dict = None) -> Flask:
         logger.exception("Internal server error")
         return api_error("Internal server error", 500, error_code="INTERNAL_ERROR")
 
+    frontend_dist_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        'frontend',
+        'dist'
+    )
+
     @app.route('/')
     def index():
+        if os.path.exists(os.path.join(frontend_dist_dir, 'index.html')):
+            return send_from_directory(frontend_dist_dir, 'index.html')
         static_dir = os.path.join(os.path.dirname(__file__), 'static')
         if os.path.exists(os.path.join(static_dir, 'index.html')):
             return send_from_directory(static_dir, 'index.html')
         return api_error("Dashboard not found. Place files in src/api/static/", 404)
+
+    @app.route('/assets/<path:filename>')
+    def serve_frontend_assets(filename):
+        if os.path.exists(os.path.join(frontend_dist_dir, 'assets', filename)):
+            return send_from_directory(os.path.join(frontend_dist_dir, 'assets'), filename)
+        return api_error("Asset not found", 404, error_code="NOT_FOUND")
+
+    @app.route('/<path:filename>')
+    def serve_frontend_file(filename):
+        candidate = os.path.join(frontend_dist_dir, filename)
+        if os.path.exists(candidate) and os.path.isfile(candidate):
+            return send_from_directory(frontend_dist_dir, filename)
+        if os.path.exists(os.path.join(frontend_dist_dir, 'index.html')) and not filename.startswith('api/'):
+            return send_from_directory(frontend_dist_dir, 'index.html')
+        return api_error("Resource not found", 404, error_code="NOT_FOUND")
 
     @app.route('/static/<path:filename>')
     def serve_static(filename):
         static_dir = os.path.join(os.path.dirname(__file__), 'static')
         return send_from_directory(static_dir, filename)
 
-    from .routes import auth_bp, blockchain_bp, transaction_bp, wallet_bp, anomaly_bp, audit_bp
+    from .routes.auth_routes import auth_bp
+    from .routes.blockchain_routes import blockchain_bp
+    from .routes.transaction_routes import transaction_bp
+    from .routes.wallet_routes import wallet_bp
+    from .routes.anomaly_routes import anomaly_bp
+    from .routes.audit_routes import audit_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(blockchain_bp)
     app.register_blueprint(transaction_bp)
@@ -184,16 +254,12 @@ def create_app(config: dict = None) -> Flask:
         token = _get_socket_token(auth)
         if not token:
             logger.warning('Rejected WebSocket client without token')
-            emit('connect_error', {'message': 'Authentication token required'})
-            disconnect()
-            return
+            raise ConnectionRefusedError('Authentication token required')
         try:
             decoded = decode_token(token)
         except Exception:
             logger.warning('Rejected WebSocket client with invalid token')
-            emit('connect_error', {'message': 'Invalid authentication token'})
-            disconnect()
-            return
+            raise ConnectionRefusedError('Invalid authentication token')
         logger.info("WebSocket client connected: %s", decoded.get('sub'))
         emit('connected', {
             'message': 'Connected to alerts stream',

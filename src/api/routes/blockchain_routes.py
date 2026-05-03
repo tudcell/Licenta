@@ -4,36 +4,25 @@ Handles blockchain viewing, stats, validation, and mining.
 """
 
 import logging
-from datetime import datetime, timezone
-from flask import Blueprint, request, current_app
+from flask import Blueprint
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 
-from ..responses import api_success, api_error, paginate, get_pagination_params
+from ..app_context import get_app_ctx
+from ..rate_limit import rate_limit
+from ..responses import api_success, api_error, get_pagination_params
 from ..extensions import socketio
+from src.service.exceptions import ServiceError
 
 logger = logging.getLogger('blockchain_audit')
 
 blockchain_bp = Blueprint('blockchain', __name__, url_prefix='/api')
 
 
-def require_role(*roles):
-    """Check if user has required role."""
-    def check():
-        claims = get_jwt()
-        return claims.get('role', 'viewer') in roles
-    return check
-
-
 @blockchain_bp.route('/health')
 def health():
     """Health check - public endpoint for monitoring."""
-    return api_success(data={
-        'status': 'healthy',
-        'blockchain_height': len(current_app.blockchain),
-        'mempool_size': len(current_app.blockchain.mempool),
-        'detector_trained': current_app.analyzer.detector.is_fitted,
-        'alerts_unresolved': current_app.metadata_store.get_alert_stats().get('unresolved', 0)
-    })
+    app_ctx = get_app_ctx()
+    return api_success(data=app_ctx.blockchain_service.health())
 
 
 @blockchain_bp.route('/blockchain', methods=['GET'])
@@ -46,118 +35,78 @@ def get_blockchain():
         page (int): Current page (default 1)
         per_page (int): Blocks per page (default 20, max 100)
     """
+    app_ctx = get_app_ctx()
     page, per_page = get_pagination_params()
-    blocks = [block.to_dict() for block in current_app.blockchain]
-
-    paginated_blocks, pagination = paginate(blocks, page, per_page)
-
-    return api_success(
-        data={
-            'chain': paginated_blocks,
-            'height': len(current_app.blockchain),
-            'is_valid': current_app.blockchain.validate_chain()[0]
-        },
-        pagination=pagination
-    )
+    data, pagination = app_ctx.blockchain_service.get_blockchain(page=page, per_page=per_page)
+    return api_success(data=data, pagination=pagination)
 
 
 @blockchain_bp.route('/blockchain/stats', methods=['GET'])
 @jwt_required()
 def get_blockchain_stats():
     """Returns blockchain stats + metadata from SQLite."""
-    stats = current_app.blockchain.get_statistics()
-    alert_stats = current_app.metadata_store.get_alert_stats()
-    stats['alerts'] = alert_stats
-    return api_success(data=stats)
+    app_ctx = get_app_ctx()
+    return api_success(data=app_ctx.blockchain_service.get_stats())
 
 
 @blockchain_bp.route('/blockchain/validate', methods=['GET'])
 @jwt_required()
 def validate_blockchain():
     """Validates entire blockchain."""
-    is_valid, error = current_app.blockchain.validate_chain()
-    return api_success(data={
-        'is_valid': is_valid,
-        'error': error,
-        'height': len(current_app.blockchain)
-    })
+    app_ctx = get_app_ctx()
+    return api_success(data=app_ctx.blockchain_service.validate())
 
 
 @blockchain_bp.route('/block/<int:index>', methods=['GET'])
 @jwt_required()
 def get_block(index):
     """Returns a specific block by index."""
-    block = current_app.blockchain.get_block(index)
-    if block:
-        return api_success(data=block.to_dict())
-    return api_error("Block not found", 404, error_code="BLOCK_NOT_FOUND")
+    app_ctx = get_app_ctx()
+    try:
+        return api_success(data=app_ctx.blockchain_service.get_block(index))
+    except ServiceError as exc:
+        return api_error(exc.message, exc.status_code, errors=exc.errors, error_code=exc.error_code, data=exc.data)
 
 
 @blockchain_bp.route('/mine', methods=['POST'])
+@rate_limit(limit=20, window_seconds=60, scope='mine_block')
 @jwt_required()
 def mine_block():
     """
     Mines a new block with transactions from mempool.
     Requires admin or operator role.
     """
-    # Check role
-    claims = get_jwt()
-    if claims.get('role') not in ('admin', 'operator'):
-        return api_error("Access forbidden. Required: admin, operator", 403, error_code="FORBIDDEN")
+    app_ctx = get_app_ctx()
+    try:
+        result = app_ctx.blockchain_service.mine_block(get_jwt().get('role', 'viewer'))
+    except ServiceError as exc:
+        return api_error(exc.message, exc.status_code, errors=exc.errors, error_code=exc.error_code, data=exc.data)
 
-    if not current_app.blockchain.mempool:
-        return api_error("No transactions in mempool", 400,
-                         error_code="EMPTY_MEMPOOL")
+    socketio.emit('block_mined', result['event'], namespace='/alerts')
 
-    result = current_app.analyzer.mine_and_analyze()
-    if result:
-        # Index transactions from new block in SQLite
-        new_block = current_app.blockchain.get_block(result['block']['index'])
-        if new_block:
-            for tx in new_block.transactions:
-                current_app.metadata_store.update_transaction_state(
-                    tx.transaction_id,
-                    block_index=new_block.index,
-                    tx_status='FLAGGED' if tx.metadata.get('flagged') else 'MINED',
-                    is_flagged=bool(tx.metadata.get('flagged'))
-                )
+    logger.info(
+        "Block #%d mined with %d transactions, %d anomalies by %s",
+        result['block']['index'],
+        result['block'].get('transaction_count', 0),
+        result['anomalies_found'],
+        get_jwt_identity(),
+    )
 
-        # Emit WebSocket event to all connected clients
-        socketio.emit('block_mined', {
-            'block_index': result['block']['index'],
-            'transaction_count': result['block'].get('transaction_count', 0),
-            'anomalies_found': result['anomalies_found'],
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }, namespace='/alerts')
-
-        logger.info("Block #%d mined with %d transactions, %d anomalies by %s",
-                    result['block']['index'],
-                    result['block'].get('transaction_count', 0),
-                    result['anomalies_found'],
-                    get_jwt_identity())
-
-        return api_success(
-            data={
-                'block': result['block'],
-                'anomalies_found': result['anomalies_found']
-            },
-            message=f"Block #{result['block']['index']} mined successfully"
-        )
-
-    return api_error("Could not mine block", 500, error_code="MINE_FAILED")
+    return api_success(
+        data={
+            'block': result['block'],
+            'anomalies_found': result['anomalies_found']
+        },
+        message=f"Block #{result['block']['index']} mined successfully"
+    )
 
 
 @blockchain_bp.route('/mempool', methods=['GET'])
 @jwt_required()
 def get_mempool():
     """Returns paginated pending transactions from mempool."""
+    app_ctx = get_app_ctx()
     page, per_page = get_pagination_params()
-    mempool_txs = [tx.to_dict() for tx in current_app.blockchain.mempool]
-    paginated, pagination = paginate(mempool_txs, page, per_page)
-
-    return api_success(data={
-        'transactions': paginated,
-        'count': len(paginated),
-        'total_mempool': len(mempool_txs)
-    }, pagination=pagination)
+    data, pagination = app_ctx.blockchain_service.get_mempool(page=page, per_page=per_page)
+    return api_success(data=data, pagination=pagination)
 
