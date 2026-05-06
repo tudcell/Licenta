@@ -1,7 +1,5 @@
 """Hybrid anomaly detector using Isolation Forest plus lightweight risk penalties."""
 
-import os
-import pickle
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -430,9 +428,9 @@ class AnomalyDetector:
             'avg_normal_confidence': float(np.mean([r.confidence for r in normal])) if normal else 0.0,
         }
 
-    def save(self, filepath: str):
-        os.makedirs(os.path.dirname(filepath) if os.path.dirname(filepath) else '.', exist_ok=True)
-        state = {
+    def to_state(self) -> Dict[str, Any]:
+        """Serializable state. Persistence is the adapter's job."""
+        return {
             'model': self.model,
             'scaler': self.scaler,
             'feature_extractor': self.feature_extractor,
@@ -463,42 +461,31 @@ class AnomalyDetector:
                 'anomaly_threshold': self.anomaly_threshold,
             },
         }
-        with open(filepath, 'wb') as f:
-            pickle.dump(state, f)
 
     @classmethod
-    def load(cls, filepath: str) -> 'AnomalyDetector':
-        try:
-            with open(filepath, 'rb') as f:
-                state = pickle.load(f)
-            detector = cls(**state['config'])
-            detector.model = state['model']
-            detector.scaler = state['scaler']
-            detector.feature_extractor = state.get('feature_extractor', FeatureExtractor())
-            detector.is_fitted = state['is_fitted']
-            detector.training_stats = state['training_stats']
-            score_stats = state.get('score_stats', {})
-            detector._model_score_mean = score_stats.get('model_mean', -0.5)
-            detector._model_score_std = score_stats.get('model_std', 0.05)
-            detector._score_mean = score_stats.get('mean', -0.5)
-            detector._score_std = score_stats.get('std', 0.05)
-            detector._score_p1 = score_stats.get('p1', detector.anomaly_threshold)
-            detector._score_p5 = score_stats.get('p5', detector.anomaly_threshold)
-            detector._score_p10 = score_stats.get('p10', detector.anomaly_threshold)
-            detector._adaptive_threshold = score_stats.get('adaptive_threshold', detector.anomaly_threshold)
-            detector._effective_threshold = score_stats.get('effective_threshold', detector._adaptive_threshold)
-            amount_stats = state.get('amount_stats') or detector.training_stats.get('amount_distribution', {})
-            detector._amount_mean = amount_stats.get('mean', 0.0)
-            detector._amount_std = amount_stats.get('std', 0.0)
-            detector._amount_high_threshold = amount_stats.get('high_threshold', detector._amount_mean + (3.0 * detector._amount_std))
-            detector._amount_very_high_threshold = amount_stats.get('very_high_threshold', detector._amount_mean + (4.0 * detector._amount_std))
-            return detector
-        except Exception as exc:
-            import logging
-            logging.getLogger('blockchain_audit').warning(
-                "Failed to load ML model from %s: %s. Starting with untrained detector.", filepath, exc
-            )
-            return cls()
+    def from_state(cls, state: Dict[str, Any]) -> 'AnomalyDetector':
+        detector = cls(**state['config'])
+        detector.model = state['model']
+        detector.scaler = state['scaler']
+        detector.feature_extractor = state.get('feature_extractor', FeatureExtractor())
+        detector.is_fitted = state['is_fitted']
+        detector.training_stats = state['training_stats']
+        score_stats = state.get('score_stats', {})
+        detector._model_score_mean = score_stats.get('model_mean', -0.5)
+        detector._model_score_std = score_stats.get('model_std', 0.05)
+        detector._score_mean = score_stats.get('mean', -0.5)
+        detector._score_std = score_stats.get('std', 0.05)
+        detector._score_p1 = score_stats.get('p1', detector.anomaly_threshold)
+        detector._score_p5 = score_stats.get('p5', detector.anomaly_threshold)
+        detector._score_p10 = score_stats.get('p10', detector.anomaly_threshold)
+        detector._adaptive_threshold = score_stats.get('adaptive_threshold', detector.anomaly_threshold)
+        detector._effective_threshold = score_stats.get('effective_threshold', detector._adaptive_threshold)
+        amount_stats = state.get('amount_stats') or detector.training_stats.get('amount_distribution', {})
+        detector._amount_mean = amount_stats.get('mean', 0.0)
+        detector._amount_std = amount_stats.get('std', 0.0)
+        detector._amount_high_threshold = amount_stats.get('high_threshold', detector._amount_mean + (3.0 * detector._amount_std))
+        detector._amount_very_high_threshold = amount_stats.get('very_high_threshold', detector._amount_mean + (4.0 * detector._amount_std))
+        return detector
 
     def __str__(self) -> str:
         status = 'trained' if self.is_fitted else 'untrained'

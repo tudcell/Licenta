@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, Dict, Tuple
 
 from src.domain.authorization import Role, require_role
@@ -11,6 +10,7 @@ from src.domain.entities.blockchain import Blockchain
 from src.domain.entities.wallet import WalletManager
 from src.domain.errors import InternalError, NotFoundError, ValidationError
 from src.infrastructure.metadata_store import MetadataStore
+from src.service.ports import ModelStore
 from src.service.transaction_analyzer import TransactionAnalyzer
 from src.utils.pagination import build_pagination_metadata
 
@@ -26,13 +26,13 @@ class AnomalyService:
         blockchain: Blockchain,
         metadata_store: MetadataStore,
         wallet_manager: WalletManager,
-        model_path: str | None = None,
+        model_store: ModelStore,
     ):
         self.analyzer = analyzer
         self.blockchain = blockchain
         self.metadata_store = metadata_store
         self.wallet_manager = wallet_manager
-        self.model_path = model_path
+        self.model_store = model_store
 
     @staticmethod
     def _resolve_training_mode(payload: Dict[str, Any]) -> str:
@@ -41,11 +41,10 @@ class AnomalyService:
             raise ValidationError("Invalid training mode. Use 'blockchain' or 'synthetic'.", error_code="INVALID_MODE")
         return mode
 
-    def _save_detector(self, model_path: str) -> None:
-        self.analyzer.detector.save(model_path)
-        logger.info("ML model saved to %s", model_path)
+    def _save_detector(self) -> None:
+        self.model_store.save(self.analyzer.detector)
 
-    def train_detector(self, role: str, payload: Dict[str, Any], model_path: str) -> Tuple[dict, str]:
+    def train_detector(self, role: str, payload: Dict[str, Any]) -> Tuple[dict, str]:
         require_role(role, Role.ADMIN, Role.OPERATOR)
         mode = self._resolve_training_mode(payload)
 
@@ -72,12 +71,12 @@ class AnomalyService:
                 transactions = clean_transactions
                 message = f"Detector trained with {len(clean_transactions)} clean blockchain transactions"
 
-            self._save_detector(model_path)
+            self._save_detector()
             return {
                 "training_mode": mode,
                 "training_samples": len(transactions),
                 "stats": self.analyzer.detector.training_stats,
-                "model_saved": model_path,
+                "model_saved": getattr(self.model_store, "filepath", None),
                 "detector_fitted": self.analyzer.detector.is_fitted,
             }, message
         except ValidationError:
@@ -202,11 +201,7 @@ class AnomalyService:
             )
 
         self.analyzer.detector.fit(clean_transactions)
-        model_path = self.model_path or os.environ.get(
-            "ML_MODEL_PATH",
-            os.path.join(os.environ.get("DATA_DIR", "data"), "ml_model.pkl"),
-        )
-        self._save_detector(model_path)
+        self._save_detector()
 
         return {
             "training_mode": "sliding_window_retrain",
@@ -215,7 +210,7 @@ class AnomalyService:
             "matched_transactions": len(ordered_transactions),
             "training_samples": len(clean_transactions),
             "stats": self.analyzer.detector.training_stats,
-            "model_saved": model_path,
+            "model_saved": getattr(self.model_store, "filepath", None),
             "detector_fitted": self.analyzer.detector.is_fitted,
         }, f"Detector retrained with {len(clean_transactions)} clean recent transactions"
 
