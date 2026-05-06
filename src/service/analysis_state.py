@@ -1,4 +1,9 @@
-"""In-memory repository for transaction analysis runtime state."""
+"""In-memory state used by the transaction analysis services.
+
+This is *not* a repository — it does not persist anything. It's a small
+container that holds runtime caches (recent reports, alerts, history) so
+the analysis services can share them.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +13,7 @@ from src.domain.entities.audit_report import AuditReport
 from src.domain.entities.transaction import Transaction
 
 
-class AnalysisStateRepository:
+class AnalysisState:
     def __init__(self):
         self.alerts: List[AuditReport] = []
         self.analysis_count = 0
@@ -42,4 +47,3 @@ class AnalysisStateRepository:
         if limit:
             alerts = alerts[-limit:]
         return alerts
-

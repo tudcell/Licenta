@@ -10,7 +10,7 @@ from src.domain.entities.blockchain import Blockchain
 from src.domain.entities.wallet import WalletManager
 from src.domain.errors import InternalError, NotFoundError, ValidationError
 from src.infrastructure.metadata_store import MetadataStore
-from src.service.ports import ModelStore
+from src.infrastructure.persistence import PickleModelStore
 from src.service.transaction_analyzer import TransactionAnalyzer
 from src.utils.pagination import build_pagination_metadata
 
@@ -26,7 +26,7 @@ class AnomalyService:
         blockchain: Blockchain,
         metadata_store: MetadataStore,
         wallet_manager: WalletManager,
-        model_store: ModelStore,
+        model_store: PickleModelStore,
     ):
         self.analyzer = analyzer
         self.blockchain = blockchain

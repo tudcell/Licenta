@@ -11,7 +11,7 @@ from src.domain.entities.transaction import TransactionType
 from src.domain.entities.wallet import WalletManager
 from src.domain.errors import AuthError, ConflictError, ForbiddenError, ValidationError
 from src.infrastructure.metadata_store import MetadataStore
-from src.service.events import DomainEvent, EventBus, NullEventBus
+from src.domain.events import DomainEvent, EventBus, NullEventBus
 from src.service.transaction_analyzer import TransactionAnalyzer
 from src.utils.pagination import build_pagination_metadata
 

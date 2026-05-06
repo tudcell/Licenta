@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.service.events import DomainEvent
+from src.domain.events import DomainEvent
 
 
 class SocketIOEventBus:

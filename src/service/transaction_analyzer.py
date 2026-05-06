@@ -8,7 +8,7 @@ from src.domain.entities.audit_report import AuditReport
 from src.domain.entities.blockchain import Blockchain, BlockchainConfig
 from src.domain.entities.transaction import Transaction
 from src.domain.ml.anomaly_detector import AnomalyDetector
-from src.repository.analysis_state_repository import AnalysisStateRepository
+from src.service.analysis_state import AnalysisState
 from src.service.detector_training_service import DetectorTrainingService
 from src.service.mining_analysis_service import MiningAnalysisService
 from src.service.transaction_audit_service import TransactionAuditService
@@ -27,7 +27,7 @@ class TransactionAnalyzer:
         self._detector = detector or AnomalyDetector()
         self.auto_train = auto_train
         self.min_training_samples = min_training_samples
-        self.analysis_state = AnalysisStateRepository()
+        self.analysis_state = AnalysisState()
 
         self.training_service = DetectorTrainingService(self._detector, self.min_training_samples)
         self.ingestion_service = TransactionIngestionService(

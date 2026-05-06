@@ -6,11 +6,11 @@ from typing import Any, Dict, List, Optional
 
 from src.domain.entities.audit_report import AuditReport
 from src.domain.entities.blockchain import Blockchain
-from src.repository.analysis_state_repository import AnalysisStateRepository
+from src.service.analysis_state import AnalysisState
 
 
 class MiningAnalysisService:
-    def __init__(self, blockchain: Blockchain, state: AnalysisStateRepository):
+    def __init__(self, blockchain: Blockchain, state: AnalysisState):
         self.blockchain = blockchain
         self.state = state
 
