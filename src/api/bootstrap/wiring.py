@@ -10,13 +10,13 @@ from flask import Flask
 
 from src.domain.entities.blockchain import Blockchain, BlockchainConfig
 from src.domain.entities.wallet import WalletManager
-from src.infrastructure.metadata_store import MetadataStore
+from src.infrastructure.messaging import SocketIOEventBus
 from src.infrastructure.persistence import (
     JsonBlockchainRepository,
     JsonWalletRepository,
+    MetadataStore,
     PickleModelStore,
 )
-from src.infrastructure.socketio_event_bus import SocketIOEventBus
 from src.service.anomaly_service import AnomalyService
 from src.service.audit_service import AuditService
 from src.service.auth_service import AuthService

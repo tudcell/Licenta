@@ -6,7 +6,7 @@ from typing import Protocol, cast
 
 from flask import current_app
 
-from src.infrastructure.metadata_store import MetadataStore
+from src.infrastructure.persistence import MetadataStore
 from src.infrastructure.persistence import PickleModelStore
 from src.service.anomaly_service import AnomalyService
 from src.service.audit_service import AuditService

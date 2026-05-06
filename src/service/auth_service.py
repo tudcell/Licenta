@@ -7,7 +7,7 @@ from typing import Optional
 
 from src.domain.authorization import Role, require_role
 from src.domain.errors import AuthError, ConflictError, ValidationError
-from src.infrastructure.metadata_store import MetadataStore
+from src.infrastructure.persistence import MetadataStore
 from src.utils.password_security import hash_password, needs_rehash, verify_password
 
 
