@@ -1,4 +1,14 @@
-"""Architecture guardrails for clean layered dependencies."""
+"""Architecture guardrails for clean layered dependencies.
+
+Layout (one persistence folder, no split between `repository` and
+`infrastructure`):
+
+    domain          - pure business types and rules; no I/O, no frameworks
+    service         - use-cases that orchestrate domain + infrastructure
+    infrastructure  - SQL/JSON/pickle adapters, event bus, etc.
+    api             - HTTP/WebSocket delivery layer
+    utils           - cross-cutting helpers (no layer responsibility)
+"""
 
 from __future__ import annotations
 
@@ -22,63 +32,44 @@ def _iter_python_files(base: Path):
             yield path
 
 
-def test_repository_layer_does_not_depend_on_service_or_api_layers():
-    repository_dir = SRC / "repository"
-    forbidden_prefixes = ("src.service", "src.api")
-
-    violations: list[str] = []
-    for path in _iter_python_files(repository_dir):
+def _violations(base: Path, forbidden: tuple[str, ...]) -> list[str]:
+    issues: list[str] = []
+    for path in _iter_python_files(base):
         imports = _collect_imports(path)
-        forbidden = [name for name in imports if name.startswith(forbidden_prefixes)]
-        if forbidden:
-            violations.append(f"{path.relative_to(ROOT)} -> {sorted(forbidden)}")
-
-    assert not violations, "\n".join(["Repository layer import violations:", *violations])
-
-
-def test_domain_layer_does_not_depend_on_repository_service_or_api_layers():
-    domain_dir = SRC / "domain"
-    forbidden_prefixes = ("src.repository", "src.service", "src.api")
-
-    violations: list[str] = []
-    for path in _iter_python_files(domain_dir):
-        imports = _collect_imports(path)
-        forbidden = [name for name in imports if name.startswith(forbidden_prefixes)]
-        if forbidden:
-            violations.append(f"{path.relative_to(ROOT)} -> {sorted(forbidden)}")
-
-    assert not violations, "\n".join(["Domain layer import violations:", *violations])
+        bad = sorted(name for name in imports if name.startswith(forbidden))
+        if bad:
+            issues.append(f"{path.relative_to(ROOT)} -> {bad}")
+    return issues
 
 
-def test_service_layer_does_not_depend_on_api_layer():
-    service_dir = SRC / "service"
-    forbidden_prefixes = ("src.api",)
-
-    violations: list[str] = []
-    for path in _iter_python_files(service_dir):
-        imports = _collect_imports(path)
-        forbidden = [name for name in imports if name.startswith(forbidden_prefixes)]
-        if forbidden:
-            violations.append(f"{path.relative_to(ROOT)} -> {sorted(forbidden)}")
-
-    assert not violations, "\n".join(["Service layer import violations:", *violations])
+def test_domain_layer_is_self_contained():
+    """Domain may only depend on stdlib, third-party, or other domain modules."""
+    forbidden = ("src.api", "src.service", "src.infrastructure", "src.utils", "src.repository")
+    issues = _violations(SRC / "domain", forbidden)
+    assert not issues, "\n".join(["Domain layer dependency violations:", *issues])
 
 
-def test_api_routes_do_not_depend_on_repository_or_database_or_domain_entities():
-    routes_dir = SRC / "api" / "routes"
-    forbidden_prefixes = ("src.repository", "src.api.database")
-
-    violations: list[str] = []
-    for path in _iter_python_files(routes_dir):
-        imports = _collect_imports(path)
-        forbidden = [name for name in imports if name.startswith(forbidden_prefixes)]
-        if forbidden:
-            violations.append(f"{path.relative_to(ROOT)} -> {sorted(forbidden)}")
-
-    assert not violations, "\n".join(["API route dependency violations:", *violations])
+def test_service_layer_does_not_depend_on_api():
+    issues = _violations(SRC / "service", ("src.api",))
+    assert not issues, "\n".join(["Service layer dependency violations:", *issues])
 
 
-def test_repository_layer_contains_only_stateful_repository():
-    repository_dir = SRC / "repository"
-    repo_files = sorted(path.name for path in _iter_python_files(repository_dir) if path.name != "__init__.py")
-    assert repo_files == ["analysis_state_repository.py"], f"Unexpected repository files: {repo_files}"
+def test_infrastructure_does_not_depend_on_service_or_api():
+    issues = _violations(SRC / "infrastructure", ("src.api", "src.service"))
+    assert not issues, "\n".join(["Infrastructure layer dependency violations:", *issues])
+
+
+def test_api_routes_do_not_depend_on_infrastructure_or_old_paths():
+    """Routes must go through the service layer; they cannot reach into
+    persistence, and they cannot import the old `repository` / `database`
+    modules that have since been removed."""
+    forbidden = ("src.repository", "src.api.database", "src.infrastructure")
+    issues = _violations(SRC / "api" / "routes", forbidden)
+    assert not issues, "\n".join(["API route dependency violations:", *issues])
+
+
+def test_no_legacy_repository_folder():
+    """The old `src/repository/` was redundant with `src/infrastructure/` and
+    has been removed; this guardrail prevents it from coming back."""
+    legacy = SRC / "repository"
+    assert not legacy.exists(), f"Legacy folder reappeared: {legacy.relative_to(ROOT)}"

@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from src.domain.entities.audit_report import AuditReport
 from src.domain.entities.blockchain import Blockchain
 from src.domain.ml.anomaly_detector import AnomalyDetector
-from src.repository.analysis_state_repository import AnalysisStateRepository
+from src.service.analysis_state import AnalysisState
 from src.service.detector_training_service import DetectorTrainingService
 
 
@@ -18,7 +18,7 @@ class TransactionAuditService:
         self,
         blockchain: Blockchain,
         detector: AnomalyDetector,
-        state: AnalysisStateRepository,
+        state: AnalysisState,
         training_service: DetectorTrainingService,
     ):
         self.blockchain = blockchain

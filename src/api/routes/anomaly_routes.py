@@ -26,7 +26,6 @@ def train_detector():
     data, message = app_ctx.anomaly_service.train_detector(
         role=get_jwt().get("role", "viewer"),
         payload=payload,
-        model_path=app_ctx.ml_model_path,
     )
     return api_success(data=data, message=message)
 

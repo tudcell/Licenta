@@ -10,9 +10,13 @@ from flask import Flask
 
 from src.domain.entities.blockchain import Blockchain, BlockchainConfig
 from src.domain.entities.wallet import WalletManager
-from src.domain.ml.anomaly_detector import AnomalyDetector
-from src.infrastructure.metadata_store import MetadataStore
-from src.infrastructure.socketio_event_bus import SocketIOEventBus
+from src.infrastructure.messaging import SocketIOEventBus
+from src.infrastructure.persistence import (
+    JsonBlockchainRepository,
+    JsonWalletRepository,
+    MetadataStore,
+    PickleModelStore,
+)
 from src.service.anomaly_service import AnomalyService
 from src.service.audit_service import AuditService
 from src.service.auth_service import AuthService
@@ -29,8 +33,15 @@ def _build_backup_sources(app: Flask) -> dict:
         "blockchain": Path(app.blockchain.config.data_dir),
         "wallets": Path(app.wallet_manager.wallets_dir),
         "metadata_db": Path(app.metadata_store.db_path),
-        "ml_model": Path(app.ml_model_path),
+        "ml_model": Path(app.model_store.filepath),
     }
+
+
+def _load_or_create_blockchain(repository: JsonBlockchainRepository, config: BlockchainConfig) -> Blockchain:
+    blockchain = repository.load(config)
+    if blockchain is not None:
+        return blockchain
+    return Blockchain(config)
 
 
 def build_services(app: Flask, socketio) -> None:
@@ -44,26 +55,40 @@ def build_services(app: Flask, socketio) -> None:
         data_dir=os.path.join(data_dir, "blockchain"),
         auto_save=True,
     )
-    app.blockchain = Blockchain(blockchain_config)
-    app.wallet_manager = WalletManager(os.path.join(data_dir, "wallets"))
+
+    # Persistence adapters
+    blockchain_repository = JsonBlockchainRepository(blockchain_config.data_dir)
+    wallet_repository = JsonWalletRepository(
+        wallets_dir=os.path.join(data_dir, "wallets"),
+        encryption_key=os.environ.get("WALLET_ENCRYPTION_KEY"),
+    )
+    model_store = PickleModelStore(
+        filepath=os.environ.get("ML_MODEL_PATH", os.path.join(data_dir, "ml_model.pkl"))
+    )
+
+    # Domain singletons (pure)
+    app.blockchain = _load_or_create_blockchain(blockchain_repository, blockchain_config)
+    app.blockchain.set_persist_hook(blockchain_repository.save)
+
+    app.wallet_manager = WalletManager(repository=wallet_repository)
+
     app.analyzer = TransactionAnalyzer(blockchain=app.blockchain, auto_train=False, min_training_samples=30)
+
+    loaded_detector = model_store.load()
+    if loaded_detector is not None:
+        app.analyzer.detector = loaded_detector
+        logger.info("ML model loaded from %s", model_store.filepath)
+
     app.snapshot_retention_count = max(
         1,
         int(os.environ.get("SNAPSHOT_RETENTION_COUNT", app.config.get("SNAPSHOT_RETENTION_COUNT", 20))),
     )
     app.snapshot_dir = os.path.join(data_dir, "backups")
 
-    app.ml_model_path = os.environ.get("ML_MODEL_PATH", os.path.join(data_dir, "ml_model.pkl"))
-    if os.path.exists(app.ml_model_path):
-        try:
-            app.analyzer.detector = AnomalyDetector.load(app.ml_model_path)
-            logger.info("ML model loaded from %s", app.ml_model_path)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Could not load ML model: %s", exc)
-
     app.metadata_store = MetadataStore(
         db_path=os.environ.get("METADATA_DB", os.path.join(data_dir, "audit_metadata.db")),
     )
+    app.model_store = model_store
 
     event_bus = SocketIOEventBus(socketio)
 
@@ -86,7 +111,7 @@ def build_services(app: Flask, socketio) -> None:
         blockchain=app.blockchain,
         metadata_store=app.metadata_store,
         wallet_manager=app.wallet_manager,
-        model_path=app.ml_model_path,
+        model_store=model_store,
     )
     app.audit_service = AuditService(
         analyzer=app.analyzer,

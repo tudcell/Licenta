@@ -12,7 +12,15 @@ from src.utils.password_security import hash_password
 logger = logging.getLogger("blockchain_audit")
 
 
+def _index_already_populated(app: Flask) -> bool:
+    _, total = app.metadata_store.search_transactions(page=1, per_page=1)
+    return total > 0
+
+
 def seed_metadata_index(app: Flask) -> None:
+    if _index_already_populated(app):
+        logger.info("Metadata index already populated; skipping rescan")
+        return
     for block in app.blockchain:
         for tx in block.transactions:
             is_flagged = bool(tx.metadata.get("flagged"))

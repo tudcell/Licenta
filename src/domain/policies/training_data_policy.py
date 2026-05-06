@@ -3,6 +3,15 @@
 from __future__ import annotations
 
 from src.domain.entities.transaction import Transaction, TransactionType
+from src.domain.value_objects import RiskLevel
+
+
+_HIGH_RISK_LEVELS = {RiskLevel.HIGH, RiskLevel.CRITICAL}
+_DIRTY_TYPES = {
+    TransactionType.LOGIN_FAILED,
+    TransactionType.ACCESS_DENIED,
+    TransactionType.DATA_DELETE,
+}
 
 
 class TrainingDataPolicy:
@@ -13,16 +22,11 @@ class TrainingDataPolicy:
         if transaction.metadata.get("anomaly_type"):
             return False
 
-        risk_level = str(transaction.metadata.get("risk_level", "low")).lower()
-        if risk_level in {"high", "critical"}:
+        risk_level = RiskLevel.from_string(
+            transaction.metadata.get("risk_level"),
+            default=RiskLevel.LOW,
+        )
+        if risk_level in _HIGH_RISK_LEVELS:
             return False
 
-        if transaction.transaction_type in {
-            TransactionType.LOGIN_FAILED,
-            TransactionType.ACCESS_DENIED,
-            TransactionType.DATA_DELETE,
-        }:
-            return False
-
-        return True
-
+        return transaction.transaction_type not in _DIRTY_TYPES

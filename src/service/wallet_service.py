@@ -13,7 +13,7 @@ from src.domain.errors import (
     NotFoundError,
     ValidationError,
 )
-from src.infrastructure.metadata_store import MetadataStore
+from src.infrastructure.persistence import MetadataStore
 from src.utils.pagination import build_pagination_metadata, paginate_sequence
 
 

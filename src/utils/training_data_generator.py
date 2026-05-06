@@ -8,7 +8,8 @@ from typing import Dict, List, Tuple, Optional
 
 
 from src.domain.entities.transaction import Transaction, TransactionType, TransactionFactory
-from src.domain.entities.wallet import WalletManager, Wallet
+from src.domain.entities.wallet import Wallet, WalletManager
+from src.infrastructure.persistence import JsonWalletRepository
 
 
 @dataclass
@@ -32,7 +33,12 @@ class TrainingDataGenerator:
 
     def __init__(self, num_users: int = 20):
         data_dir = os.environ.get('DATA_DIR', 'data')
-        self.wallet_manager = WalletManager(os.path.join(data_dir, "training_wallets"))
+        wallets_dir = os.path.join(data_dir, "training_wallets")
+        repository = JsonWalletRepository(
+            wallets_dir=wallets_dir,
+            encryption_key=os.environ.get("WALLET_ENCRYPTION_KEY"),
+        )
+        self.wallet_manager = WalletManager(repository=repository)
         self.users: List[Wallet] = []
         self.user_profiles: Dict[str, UserProfile] = {}
 
@@ -457,12 +463,14 @@ class TrainingDataGenerator:
 
 
 def train_detector_with_quality_data(detector: 'AnomalyDetector', normal_count: int = 800) -> dict:
+    from src.infrastructure.persistence import PickleModelStore
+
     generator = TrainingDataGenerator(num_users=20)
     transactions = generator.generate_only_normal(count=normal_count)
     detector.fit(transactions)
     data_dir = os.environ.get('DATA_DIR', 'data')
     model_path = os.path.join(data_dir, 'ml_model.pkl')
-    detector.save(model_path)
+    PickleModelStore(model_path).save(detector)
 
     evaluation_transactions, evaluation_labels = generator.generate_evaluation_stream(
         normal_count=max(200, normal_count // 2),

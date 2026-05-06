@@ -1,4 +1,8 @@
-"""Event bus port and a no-op adapter for tests/CLI use."""
+"""Domain events and the EventBus contract.
+
+DomainEvent is a value object — it describes *what happened*, not *how*
+it gets delivered. Concrete event-bus adapters live under infrastructure.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +22,7 @@ class EventBus(Protocol):
 
 
 class NullEventBus:
-    """Default adapter that drops events. Useful in unit tests."""
+    """Adapter that drops events. Used in unit tests and CLI tooling."""
 
-    def publish(self, event: DomainEvent) -> None:  # noqa: D401
+    def publish(self, event: DomainEvent) -> None:
         return None

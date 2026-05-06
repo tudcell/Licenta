@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from src.domain.entities.audit_report import AuditReport
 from src.domain.ml.anomaly_detector import AnomalyResult
-from src.repository.analysis_state_repository import AnalysisStateRepository
+from src.service.analysis_state import AnalysisState
 from src.service.transaction_audit_service import TransactionAuditService
 
 
@@ -98,7 +98,7 @@ def _mk_result(transaction_id: str, is_anomaly: bool) -> AnomalyResult:
 
 def test_statistics_use_all_reports_not_only_alerts():
     detector = _StubDetector()
-    state = AnalysisStateRepository()
+    state = AnalysisState()
 
     report_anomaly = AuditReport(
         transaction_id="tx-anom",
@@ -144,7 +144,7 @@ def test_statistics_use_all_reports_not_only_alerts():
 
 def test_statistics_rehydrate_state_after_restart_when_chain_exists():
     detector = _RehydrationDetector()
-    state = AnalysisStateRepository()
+    state = AnalysisState()
     chain_transactions = [_Tx("tx-1"), _Tx("tx-2")]
     blockchain = _BlockchainStub([_Block(1, chain_transactions)])
 

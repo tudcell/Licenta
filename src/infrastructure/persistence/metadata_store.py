@@ -1,7 +1,8 @@
 """Facade combining the focused SQLite repositories.
 
 Kept as a single class on the Flask app for compatibility, but the work is
-now delegated to dedicated repositories under `src.infrastructure.sqlite`.
+delegated to the dedicated repositories under
+`src.infrastructure.persistence.sqlite`.
 """
 
 from __future__ import annotations
