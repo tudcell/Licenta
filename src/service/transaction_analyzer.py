@@ -65,11 +65,6 @@ class TransactionAnalyzer:
         return self.analysis_state.alerts
 
     @property
-    def state(self) -> AnalysisStateRepository:
-        """Backward-compatible accessor for code still referencing `.state`."""
-        return self.analysis_state
-
-    @property
     def analysis_count(self) -> int:
         return self.analysis_state.analysis_count
 
