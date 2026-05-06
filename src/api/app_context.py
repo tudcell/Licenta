@@ -6,11 +6,12 @@ from typing import Protocol, cast
 
 from flask import current_app
 
-from src.service.transaction_analyzer import TransactionAnalyzer
+from src.infrastructure.metadata_store import MetadataStore
 from src.service.anomaly_service import AnomalyService
-from src.service.auth_service import AuthService
 from src.service.audit_service import AuditService
+from src.service.auth_service import AuthService
 from src.service.blockchain_service import BlockchainService
+from src.service.transaction_analyzer import TransactionAnalyzer
 from src.service.transaction_service import TransactionService
 from src.service.wallet_service import WalletService
 
@@ -25,11 +26,10 @@ class AppContext(Protocol):
     transaction_service: TransactionService
     wallet_service: WalletService
     blockchain_service: BlockchainService
+    metadata_store: MetadataStore
     ml_model_path: str
     snapshot_retention_count: int
 
 
 def get_app_ctx() -> AppContext:
-    """Return current Flask app cast to the typed protocol for static analysis."""
-
     return cast(AppContext, cast(object, current_app))

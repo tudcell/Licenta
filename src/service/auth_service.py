@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+from src.domain.authorization import Role, require_role
+from src.domain.errors import AuthError, ConflictError, ValidationError
 from src.infrastructure.metadata_store import MetadataStore
-from src.service.exceptions import ServiceError
 from src.utils.password_security import hash_password, needs_rehash, verify_password
 
 
@@ -24,7 +25,7 @@ class AuthService:
     def authenticate(self, username: str, password: str) -> AuthenticatedUser:
         user_record = self.metadata_store.get_user(username)
         if not user_record or not verify_password(password, user_record["password_hash"]):
-            raise ServiceError("Invalid credentials", status_code=401, error_code="AUTH_FAILED")
+            raise AuthError("Invalid credentials")
 
         if needs_rehash(user_record["password_hash"]):
             self.metadata_store.update_password_hash(username, hash_password(password))
@@ -38,7 +39,7 @@ class AuthService:
         )
 
     def register_user(self, requester_role: str, username: str, password: str, role: str, wallet_name: Optional[str]) -> dict:
-        self._require_admin(requester_role)
+        require_role(requester_role, Role.ADMIN)
         self._validate_username(username)
         self._validate_password(password)
         self._validate_role(role)
@@ -56,10 +57,10 @@ class AuthService:
         self._create_user_record(
             username=username,
             password=password,
-            role="viewer",
+            role=Role.VIEWER.value,
             wallet_name=None,
         )
-        return {"username": username, "role": "viewer", "wallet_name": None}
+        return {"username": username, "role": Role.VIEWER.value, "wallet_name": None}
 
     def revoke_token(self, jti: str) -> None:
         self.metadata_store.revoke_token(jti)
@@ -68,24 +69,20 @@ class AuthService:
         return self.metadata_store.get_user(username)
 
     @staticmethod
-    def _require_admin(requester_role: str) -> None:
-        if requester_role != "admin":
-            raise ServiceError("Access forbidden. Required: admin", status_code=403, error_code="FORBIDDEN")
-
-    @staticmethod
     def _validate_username(username: str) -> None:
         if not username or len(username) < 3:
-            raise ServiceError("Username must have at least 3 characters", status_code=400)
+            raise ValidationError("Username must have at least 3 characters")
 
     @staticmethod
     def _validate_password(password: str) -> None:
         if not password or len(password) < 8:
-            raise ServiceError("Password must have at least 8 characters", status_code=400)
+            raise ValidationError("Password must have at least 8 characters")
 
     @staticmethod
     def _validate_role(role: str) -> None:
-        if role not in ("admin", "operator", "viewer"):
-            raise ServiceError("Invalid role. Options: admin, operator, viewer", status_code=400)
+        valid = {item.value for item in Role}
+        if role not in valid:
+            raise ValidationError("Invalid role. Options: admin, operator, viewer")
 
     def _create_user_record(self, username: str, password: str, role: str, wallet_name: Optional[str]) -> None:
         creation_successful = self.metadata_store.create_user(
@@ -96,4 +93,4 @@ class AuthService:
         )
         if creation_successful:
             return
-        raise ServiceError(f"User '{username}' already exists", status_code=409, error_code="USER_EXISTS")
+        raise ConflictError(f"User '{username}' already exists", error_code="USER_EXISTS")

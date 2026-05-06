@@ -5,9 +5,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Tuple
 
-from src.infrastructure.metadata_store import MetadataStore
+from src.domain.authorization import Role, require_role
 from src.domain.entities.blockchain import Blockchain
-from src.service.exceptions import ServiceError
+from src.domain.errors import InternalError, NotFoundError, ValidationError
+from src.infrastructure.metadata_store import MetadataStore
+from src.service.events import DomainEvent, EventBus, NullEventBus
 from src.service.transaction_analyzer import TransactionAnalyzer
 from src.utils.pagination import paginate_sequence
 
@@ -18,10 +20,12 @@ class BlockchainService:
         blockchain: Blockchain,
         analyzer: TransactionAnalyzer,
         metadata_store: MetadataStore,
+        event_bus: EventBus | None = None,
     ):
         self.blockchain = blockchain
         self.analyzer = analyzer
         self.metadata_store = metadata_store
+        self.event_bus: EventBus = event_bus or NullEventBus()
 
     def health(self) -> dict:
         return {
@@ -57,19 +61,18 @@ class BlockchainService:
     def get_block(self, index: int) -> dict:
         block = self.blockchain.get_block(index)
         if not block:
-            raise ServiceError("Block not found", status_code=404, error_code="BLOCK_NOT_FOUND")
+            raise NotFoundError("Block not found", error_code="BLOCK_NOT_FOUND")
         return block.to_dict()
 
     def mine_block(self, role: str) -> dict:
-        if role not in ("admin", "operator"):
-            raise ServiceError("Access forbidden. Required: admin, operator", status_code=403, error_code="FORBIDDEN")
+        require_role(role, Role.ADMIN, Role.OPERATOR)
 
         if not self.blockchain.get_mempool_transactions():
-            raise ServiceError("No transactions in mempool", status_code=400, error_code="EMPTY_MEMPOOL")
+            raise ValidationError("No transactions in mempool", error_code="EMPTY_MEMPOOL")
 
         result = self.analyzer.mine_and_analyze()
         if not result:
-            raise ServiceError("Could not mine block", status_code=500, error_code="MINE_FAILED")
+            raise InternalError("Could not mine block", error_code="MINE_FAILED")
 
         new_block = self.blockchain.get_block(result["block"]["index"])
         if new_block:
@@ -83,15 +86,17 @@ class BlockchainService:
                     is_flagged=is_flagged,
                 )
 
+        event_payload = {
+            "block_index": result["block"]["index"],
+            "transaction_count": result["block"].get("transaction_count", 0),
+            "anomalies_found": result["anomalies_found"],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        self.event_bus.publish(DomainEvent(name="block_mined", payload=event_payload))
+
         return {
             "block": result["block"],
             "anomalies_found": result["anomalies_found"],
-            "event": {
-                "block_index": result["block"]["index"],
-                "transaction_count": result["block"].get("transaction_count", 0),
-                "anomalies_found": result["anomalies_found"],
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            },
         }
 
     def get_mempool(self, page: int, per_page: int) -> Tuple[dict, dict]:

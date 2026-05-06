@@ -6,10 +6,11 @@ import logging
 import os
 from typing import Any, Dict, Tuple
 
-from src.infrastructure.metadata_store import MetadataStore
+from src.domain.authorization import Role, require_role
 from src.domain.entities.blockchain import Blockchain
 from src.domain.entities.wallet import WalletManager
-from src.service.exceptions import ServiceError
+from src.domain.errors import InternalError, NotFoundError, ValidationError
+from src.infrastructure.metadata_store import MetadataStore
 from src.service.transaction_analyzer import TransactionAnalyzer
 from src.utils.pagination import build_pagination_metadata
 
@@ -25,22 +26,19 @@ class AnomalyService:
         blockchain: Blockchain,
         metadata_store: MetadataStore,
         wallet_manager: WalletManager,
+        model_path: str | None = None,
     ):
         self.analyzer = analyzer
         self.blockchain = blockchain
         self.metadata_store = metadata_store
         self.wallet_manager = wallet_manager
-
-    @staticmethod
-    def _require_admin_or_operator(role: str) -> None:
-        if role not in ("admin", "operator"):
-            raise ServiceError("Access forbidden. Required: admin, operator", status_code=403, error_code="FORBIDDEN")
+        self.model_path = model_path
 
     @staticmethod
     def _resolve_training_mode(payload: Dict[str, Any]) -> str:
         mode = str(payload.get("mode") or ("synthetic" if payload.get("use_synthetic") else "blockchain")).lower()
         if mode not in ALLOWED_TRAINING_MODES:
-            raise ServiceError("Invalid training mode. Use 'blockchain' or 'synthetic'.", status_code=400, error_code="INVALID_MODE")
+            raise ValidationError("Invalid training mode. Use 'blockchain' or 'synthetic'.", error_code="INVALID_MODE")
         return mode
 
     def _save_detector(self, model_path: str) -> None:
@@ -48,7 +46,7 @@ class AnomalyService:
         logger.info("ML model saved to %s", model_path)
 
     def train_detector(self, role: str, payload: Dict[str, Any], model_path: str) -> Tuple[dict, str]:
-        self._require_admin_or_operator(role)
+        require_role(role, Role.ADMIN, Role.OPERATOR)
         mode = self._resolve_training_mode(payload)
 
         try:
@@ -66,9 +64,8 @@ class AnomalyService:
                 clean_transactions = self.analyzer.get_clean_training_transactions(all_transactions)
                 min_samples = self.analyzer.min_training_samples
                 if len(clean_transactions) < min_samples:
-                    raise ServiceError(
+                    raise ValidationError(
                         f"At least {min_samples} clean transactions required (have {len(clean_transactions)} clean out of {len(all_transactions)} total)",
-                        status_code=400,
                         error_code="INSUFFICIENT_DATA",
                     )
                 self.analyzer.train_detector(all_transactions)
@@ -83,11 +80,11 @@ class AnomalyService:
                 "model_saved": model_path,
                 "detector_fitted": self.analyzer.detector.is_fitted,
             }, message
-        except ServiceError:
+        except ValidationError:
             raise
         except Exception as exc:  # noqa: BLE001
             logger.exception("Error training detector")
-            raise ServiceError(f"Training error: {exc}", status_code=500, error_code="TRAINING_ERROR") from exc
+            raise InternalError(f"Training error: {exc}", error_code="TRAINING_ERROR") from exc
 
     def get_anomaly_stats(self) -> dict:
         analyzer_stats = self.analyzer.get_statistics()
@@ -106,13 +103,13 @@ class AnomalyService:
         return {"alerts": alerts, "count": len(alerts)}, build_pagination_metadata(page, per_page, total)
 
     def resolve_alert(self, role: str, alert_id: int, resolved_by: str) -> None:
-        self._require_admin_or_operator(role)
+        require_role(role, Role.ADMIN, Role.OPERATOR)
 
         if not self.metadata_store.resolve_alert(alert_id, resolved_by):
-            raise ServiceError(f"Alert #{alert_id} not found or already resolved", status_code=404, error_code="ALERT_NOT_FOUND")
+            raise NotFoundError(f"Alert #{alert_id} not found or already resolved", error_code="ALERT_NOT_FOUND")
 
     def generate_demo_data(self, generated_by: str, role: str, payload: Dict[str, Any]) -> Tuple[dict, str]:
-        self._require_admin_or_operator(role)
+        require_role(role, Role.ADMIN, Role.OPERATOR)
 
         count = max(1, min(int(payload.get("count", 50)), 500))
         include_anomalies = bool(payload.get("include_anomalies", True))
@@ -176,7 +173,7 @@ class AnomalyService:
         return data, f"{len(combined)} transactions generated ({flagged_count} flagged for review)"
 
     def retrain_detector(self, role: str) -> Tuple[dict, str]:
-        self._require_admin_or_operator(role)
+        require_role(role, Role.ADMIN, Role.OPERATOR)
 
         window_size = 2000
         indexed_rows, _ = self.metadata_store.search_transactions(
@@ -199,14 +196,16 @@ class AnomalyService:
         clean_transactions = self.analyzer.get_clean_training_transactions(ordered_transactions)
         min_samples = self.analyzer.min_training_samples
         if len(clean_transactions) < min_samples:
-            raise ServiceError(
+            raise ValidationError(
                 f"At least {min_samples} clean transactions required for retraining (have {len(clean_transactions)})",
-                status_code=400,
                 error_code="INSUFFICIENT_DATA",
             )
 
         self.analyzer.detector.fit(clean_transactions)
-        model_path = os.environ.get("ML_MODEL_PATH", os.path.join(os.environ.get("DATA_DIR", "data"), "ml_model.pkl"))
+        model_path = self.model_path or os.environ.get(
+            "ML_MODEL_PATH",
+            os.path.join(os.environ.get("DATA_DIR", "data"), "ml_model.pkl"),
+        )
         self._save_detector(model_path)
 
         return {
