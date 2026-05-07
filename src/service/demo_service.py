@@ -9,6 +9,7 @@ import logging
 from typing import Any, Dict, Tuple
 
 from src.domain.authorization import Principal, Role
+from src.domain.entities.transaction import TransactionStatus
 from src.domain.entities.wallet import WalletManager
 from src.infrastructure.persistence.sqlite import AlertRepository, TransactionIndexRepository
 from src.service.transaction_ingestion_service import TransactionIngestionService
@@ -50,13 +51,16 @@ class DemoService:
 
         for tx in ordered:
             report = self._ingestion.add_transaction(tx)
-            status = "REJECTED"
-            if report.signature_valid:
-                status = "FLAGGED" if report.flagged_for_review else "PENDING"
+            if not report.signature_valid:
+                status = TransactionStatus.REJECTED
+            elif report.flagged_for_review:
+                status = TransactionStatus.FLAGGED
+            else:
+                status = TransactionStatus.PENDING
             self._transactions.index(
                 tx,
                 block_index=None,
-                tx_status=status,
+                tx_status=status.value,
                 is_flagged=report.flagged_for_review,
                 ml_score=float(report.anomaly_result.anomaly_score) if report.anomaly_result else None,
                 ml_reason=report.anomaly_result.explanation if report.anomaly_result else None,

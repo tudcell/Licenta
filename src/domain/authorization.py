@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 from src.domain.errors import ForbiddenError
 
@@ -24,9 +23,16 @@ def parse_role(value: str | None) -> Role:
 
 @dataclass(frozen=True)
 class Principal:
+    """Authenticated identity carried through the application.
+
+    Note: deliberately does NOT carry `wallet_name`. The user's active
+    wallet binding can change between login and request time; services
+    must read it fresh from `UserRepository.get(...)` instead of trusting
+    a stale JWT claim.
+    """
+
     username: str
     role: Role
-    wallet_name: Optional[str] = None
 
     def require(self, *allowed: Role) -> None:
         if self.role not in allowed:

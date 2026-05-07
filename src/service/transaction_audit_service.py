@@ -26,12 +26,18 @@ class TransactionAuditService:
         self.training_service = training_service
 
     def _rehydrate_state_from_blockchain_if_needed(self) -> None:
-        """Rebuild in-memory reports/alerts from persisted chain data after restart."""
+        """Rebuild in-memory reports/alerts from persisted chain data after restart.
+
+        Skip only when *every chain transaction* already has a cached report.
+        Counting `reports_by_transaction_id` blindly is wrong: ad-hoc
+        `analyze_transaction` calls (including for mempool tx ids never on
+        the chain) can grow the cache without ever covering the chain.
+        """
         all_transactions = self.blockchain.get_all_transactions()
         if not all_transactions:
             return
-        # Skip only when our cache already covers every chain transaction.
-        if len(self.state.reports_by_transaction_id) >= len(all_transactions):
+        cached_ids = self.state.reports_by_transaction_id.keys()
+        if all(tx.transaction_id in cached_ids for tx in all_transactions):
             return
 
         blockchain_valid, _ = self.blockchain.validate_chain()

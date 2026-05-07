@@ -30,8 +30,22 @@ class KeyPair:
         )
         return public_bytes.hex()
 
-    def get_private_key_hex(self) -> str:
-        """Returns the private key in hexadecimal format (WARNING: keep secret!)."""
+    def sign(self, data: Any) -> str:
+        """Sign data with this keypair's private key. Returns base64 signature.
+
+        This is the only way to use the private key from outside KeyPair.
+        The raw key material never leaves the object via this path.
+        """
+        return DigitalSignature.sign(self.private_key, data)
+
+    def export_private_key_hex(self) -> str:
+        """Export the private key as hex bytes for persistence.
+
+        WARNING: this exposes the raw key. Only the persistence adapter
+        should call it, immediately wrapping the result in encryption
+        before writing to disk. Do not log, repr, or include in HTTP
+        responses.
+        """
         private_bytes = self.private_key.private_bytes(
             encoding=serialization.Encoding.DER,
             format=serialization.PrivateFormat.PKCS8,

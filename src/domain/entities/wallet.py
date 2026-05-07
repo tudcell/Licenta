@@ -29,30 +29,34 @@ class Wallet:
     def public_key(self) -> str:
         return self._key_pair.get_public_key_hex()
 
-    @property
-    def private_key(self) -> str:
-        return self._key_pair.get_private_key_hex()
-
     def sign_transaction(self, transaction: Transaction) -> Transaction:
+        """Stamp public_key + signature on the transaction without exposing
+        the private key."""
         transaction.public_key = self.public_key
-        transaction.sign(self.private_key)
+        transaction.signature = self._key_pair.sign(transaction.get_signable_data())
         return transaction
 
     def create_and_sign_transaction(self, transaction_type, data: Dict[str, Any], metadata: Dict[str, Any] = None) -> Transaction:
         tx = Transaction(transaction_type=transaction_type, sender_address=self.address, data=data, metadata=metadata or {})
         return self.sign_transaction(tx)
 
-    def to_dict(self, include_private_key: bool = False) -> Dict[str, Any]:
-        data = {
+    def to_dict(self) -> Dict[str, Any]:
+        """Public, safe representation. Never includes the private key."""
+        return {
             "name": self.name,
             "address": self.address,
             "public_key": self.public_key,
             "created_at": self.created_at,
             "metadata": self.metadata,
         }
-        if include_private_key:
-            data["private_key"] = self.private_key
-        return data
+
+    def export_private_key_hex(self) -> str:
+        """Hex-encoded private key for persistence layer use only.
+
+        Callers MUST encrypt the return value before writing it anywhere.
+        Anything else (logging, HTTP responses, in-memory caches) is a leak.
+        """
+        return self._key_pair.export_private_key_hex()
 
 
 class WalletManager:
@@ -84,7 +88,7 @@ class WalletManager:
         for name in self._repository.list_names():
             wallet = self.get_wallet(name)
             if wallet:
-                wallets.append(wallet.to_dict(include_private_key=False))
+                wallets.append(wallet.to_dict())
         return wallets
 
 

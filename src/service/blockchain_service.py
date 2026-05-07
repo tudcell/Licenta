@@ -7,6 +7,7 @@ from typing import Tuple
 
 from src.domain.authorization import Principal, Role
 from src.domain.entities.blockchain import Blockchain
+from src.domain.entities.transaction import TransactionStatus
 from src.domain.errors import InternalError, NotFoundError, ValidationError
 from src.domain.events import DomainEvent, EventBus, NullEventBus
 from src.infrastructure.persistence.sqlite import AlertRepository, TransactionIndexRepository
@@ -77,12 +78,12 @@ class BlockchainService:
         new_block = self._blockchain.get_block(result["block"]["index"])
         if new_block:
             for tx in new_block.transactions:
-                index_record = self._transactions.get(tx.transaction_id) or {}
+                index_entry = self._transactions.get(tx.transaction_id)
                 self._transactions.update_state(
                     tx.transaction_id,
                     block_index=new_block.index,
-                    tx_status="MINED",
-                    is_flagged=bool(index_record.get("is_flagged", 0)),
+                    tx_status=TransactionStatus.MINED.value,
+                    is_flagged=index_entry.is_flagged if index_entry else False,
                 )
 
         event_payload = {

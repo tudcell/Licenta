@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 from src.domain.authorization import Principal, Role
 from src.domain.entities.blockchain import Blockchain
-from src.domain.entities.transaction import TransactionType
+from src.domain.entities.transaction import TransactionStatus, TransactionType
 from src.domain.entities.wallet import WalletManager
 from src.domain.errors import (
     AuthError,
@@ -97,7 +97,7 @@ class TransactionService:
         report = self._ingestion.add_transaction(tx)
 
         if not report.signature_valid:
-            self._index(tx, report, tx_status="REJECTED", is_flagged=True)
+            self._index(tx, report, tx_status=TransactionStatus.REJECTED, is_flagged=True)
             self._alerts.save(report)
             raise ValidationError(
                 "Transaction signature is invalid",
@@ -106,7 +106,7 @@ class TransactionService:
             )
 
         if not report.added_to_mempool:
-            self._index(tx, report, tx_status="REJECTED", is_flagged=report.is_suspicious)
+            self._index(tx, report, tx_status=TransactionStatus.REJECTED, is_flagged=report.is_suspicious)
             if report.is_suspicious:
                 self._alerts.save(report)
             raise ConflictError(
@@ -115,7 +115,7 @@ class TransactionService:
                 data={"transaction": tx.to_dict(), "analysis": report.to_dict()},
             )
 
-        tx_status = "FLAGGED" if report.flagged_for_review else "PENDING"
+        tx_status = TransactionStatus.FLAGGED if report.flagged_for_review else TransactionStatus.PENDING
         self._index(tx, report, tx_status=tx_status, is_flagged=report.flagged_for_review)
 
         if report.is_suspicious:
@@ -143,7 +143,7 @@ class TransactionService:
         tx_status: Optional[str] = None,
         flagged: Optional[bool] = None,
     ) -> tuple[dict, dict]:
-        indexed_txs, total = self._transactions.search(
+        entries, total = self._transactions.search(
             sender=sender,
             tx_type=tx_type,
             status=tx_status,
@@ -151,28 +151,29 @@ class TransactionService:
             page=page,
             per_page=per_page,
         )
+        serialized = [entry.to_legacy_dict() for entry in entries]
         pagination = build_pagination_metadata(page, per_page, total)
-        return {"transactions": indexed_txs, "count": len(indexed_txs)}, pagination
+        return {"transactions": serialized, "count": len(serialized)}, pagination
 
     def get_transaction_details(self, transaction_id: str) -> Optional[dict]:
         proof = self._blockchain.verify_transaction_proof(transaction_id)
-        index_record = self._transactions.get(transaction_id)
+        index_entry = self._transactions.get(transaction_id)
         if proof:
             payload = dict(proof)
-            if index_record:
-                payload["index_record"] = index_record
+            if index_entry:
+                payload["index_record"] = index_entry.to_legacy_dict()
             return payload
-        if index_record:
-            return {"index_record": index_record}
+        if index_entry:
+            return {"index_record": index_entry.to_legacy_dict()}
         return None
 
     def analyze_transaction(self, transaction_id: str):
         return self._audit.analyze_transaction(transaction_id)
 
-    def _index(self, tx, report, tx_status: str, is_flagged: bool) -> None:
+    def _index(self, tx, report, tx_status: TransactionStatus, is_flagged: bool) -> None:
         self._transactions.index(
             tx,
-            tx_status=tx_status,
+            tx_status=tx_status.value,
             is_flagged=is_flagged,
             ml_score=self._score(report),
             ml_reason=self._reason(report),
