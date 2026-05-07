@@ -41,7 +41,6 @@ def create_app(config: dict | None = None) -> Flask:
     is_production = os.environ.get("APP_ENV", "development").lower() == "production"
 
     app.config.update(build_app_config(is_production=is_production, override=config))
-    os.environ.setdefault("WALLET_ENCRYPTION_KEY", app.config["JWT_SECRET_KEY"])
 
     cors_origins = parse_cors_origins(
         os.environ.get(

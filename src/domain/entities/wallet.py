@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from src.domain.entities.transaction import Transaction, TransactionFactory
+from src.domain.entities.transaction import Transaction
 from src.domain.policies.digital_signature import DigitalSignature, KeyPair
 
 
@@ -42,16 +42,6 @@ class Wallet:
         tx = Transaction(transaction_type=transaction_type, sender_address=self.address, data=data, metadata=metadata or {})
         return self.sign_transaction(tx)
 
-    def create_login_event(self, ip_address: str, user_agent: str = None, success: bool = True) -> Transaction:
-        tx = TransactionFactory.create_login_event(
-            user_id=self.name,
-            sender_address=self.address,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            success=success,
-        )
-        return self.sign_transaction(tx)
-
     def to_dict(self, include_private_key: bool = False) -> Dict[str, Any]:
         data = {
             "name": self.name,
@@ -68,11 +58,9 @@ class Wallet:
 class WalletManager:
     """In-memory cache of wallets. Persistence is delegated to a WalletRepository."""
 
-    def __init__(self, repository, wallets_dir: Optional[str] = None):
+    def __init__(self, repository):
         self._repository = repository
         self.wallets: Dict[str, Wallet] = {}
-        # Kept on the manager so the snapshot/backup helpers can still read it
-        self.wallets_dir = wallets_dir or getattr(repository, "wallets_dir", "wallets")
 
     def create_wallet(self, name: str, metadata: Dict[str, Any] = None, persist: bool = True) -> Wallet:
         if name in self.wallets or self._repository.exists(name):

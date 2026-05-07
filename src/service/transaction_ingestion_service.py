@@ -6,6 +6,7 @@ from src.domain.entities.audit_report import AuditReport
 from src.domain.entities.blockchain import Blockchain
 from src.domain.entities.transaction import Transaction
 from src.domain.ml.anomaly_detector import AnomalyDetector
+from src.infrastructure.persistence.json import JsonBlockchainRepository
 from src.service.analysis_state import AnalysisState
 from src.service.detector_training_service import DetectorTrainingService
 
@@ -14,12 +15,14 @@ class TransactionIngestionService:
     def __init__(
         self,
         blockchain: Blockchain,
+        blockchain_repo: JsonBlockchainRepository,
         detector: AnomalyDetector,
         state: AnalysisState,
         training_service: DetectorTrainingService,
         auto_train: bool,
     ):
         self.blockchain = blockchain
+        self._blockchain_repo = blockchain_repo
         self.detector = detector
         self.state = state
         self.training_service = training_service
@@ -40,6 +43,8 @@ class TransactionIngestionService:
         added_to_mempool = False
         if signature_valid:
             added_to_mempool = self.blockchain.add_transaction(transaction)
+            if added_to_mempool:
+                self._blockchain_repo.save(self.blockchain)
 
         if signature_valid and added_to_mempool:
             self.state.append_history(transaction)
@@ -58,4 +63,3 @@ class TransactionIngestionService:
         self.state.increment_analysis_count()
         self.state.cache_report(report)
         return report
-

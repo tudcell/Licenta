@@ -1,13 +1,12 @@
-"""Service for transaction-level analysis and audit/statistics export."""
+"""Per-transaction analysis + statistics for the dashboard."""
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from src.domain.entities.audit_report import AuditReport
 from src.domain.entities.blockchain import Blockchain
+from src.domain.entities.transaction import Transaction
 from src.domain.ml.anomaly_detector import AnomalyDetector
 from src.service.analysis_state import AnalysisState
 from src.service.detector_training_service import DetectorTrainingService
@@ -28,11 +27,11 @@ class TransactionAuditService:
 
     def _rehydrate_state_from_blockchain_if_needed(self) -> None:
         """Rebuild in-memory reports/alerts from persisted chain data after restart."""
-        if self.state.reports_by_transaction_id:
-            return
-
         all_transactions = self.blockchain.get_all_transactions()
         if not all_transactions:
+            return
+        # Skip only when our cache already covers every chain transaction.
+        if len(self.state.reports_by_transaction_id) >= len(all_transactions):
             return
 
         blockchain_valid, _ = self.blockchain.validate_chain()
@@ -114,66 +113,35 @@ class TransactionAuditService:
 
     def get_statistics(self) -> Dict[str, Any]:
         self._rehydrate_state_from_blockchain_if_needed()
+        return self.statistics_from_reports(list(self.state.reports_by_transaction_id.values()))
+
+    def statistics_from_reports(self, reports: List[AuditReport]) -> Dict[str, Any]:
+        """Build the statistics payload from a precomputed report set, without
+        re-traversing the chain. Used by IntegrityService.export_audit_log."""
         blockchain_stats = self.blockchain.get_statistics()
-        anomaly_stats = {}
+        anomaly_stats: Dict[str, Any] = {}
         detector_trained = bool(self.detector.is_fitted)
         training_stats = self.detector.training_stats if detector_trained else {}
 
-        if self.detector.is_fitted and self.state.reports_by_transaction_id:
-            anomaly_results = [
-                report.anomaly_result
-                for report in self.state.reports_by_transaction_id.values()
-                if report.anomaly_result is not None
-            ]
+        if detector_trained and reports:
+            anomaly_results = [report.anomaly_result for report in reports if report.anomaly_result is not None]
             if anomaly_results:
                 anomaly_stats = self.detector.get_anomaly_statistics(anomaly_results)
+
+        alerts_count = sum(1 for report in reports if report.is_suspicious)
 
         return {
             "blockchain": blockchain_stats,
             "analysis": {
-                "total_analyzed": self.state.analysis_count,
-                "alerts_count": len(self.state.alerts),
+                "total_analyzed": max(self.state.analysis_count, len(reports)),
+                "alerts_count": alerts_count,
                 "blockchain_length": len(self.blockchain.chain),
                 "clean_training_candidates": len(
                     self.training_service.get_clean_training_transactions(self.state.historical_transactions)
                 ),
                 "detector_fitted": detector_trained,
-                "detector_trained": detector_trained,
                 "training_samples": training_stats.get("n_samples", 0),
                 "trained_at": training_stats.get("trained_at"),
             },
             "anomaly_detection": anomaly_stats,
         }
-
-    def validate_blockchain_integrity(self) -> Dict[str, Any]:
-        is_valid, error = self.blockchain.validate_chain()
-        invalid_signatures = []
-        for block in self.blockchain:
-            for tx in block.transactions:
-                if not tx.verify_signature():
-                    invalid_signatures.append(tx.transaction_id)
-
-        return {
-            "chain_valid": is_valid,
-            "error": error,
-            "invalid_signatures": invalid_signatures,
-            "total_blocks": len(self.blockchain),
-            "total_transactions": sum(len(item.transactions) for item in self.blockchain),
-        }
-
-    def export_audit_log(self) -> str:
-        self._rehydrate_state_from_blockchain_if_needed()
-        return json.dumps(
-            {
-                "generated_at": datetime.now(timezone.utc).isoformat(),
-                "statistics": self.get_statistics(),
-                "integrity_check": self.validate_blockchain_integrity(),
-                "alerts": [item.to_dict() for item in self.state.alerts],
-                "blockchain": {
-                    "height": self.blockchain.height,
-                    "blocks": [item.to_dict() for item in self.blockchain],
-                },
-            },
-            ensure_ascii=False,
-            indent=2,
-        )

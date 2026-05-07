@@ -125,7 +125,7 @@ def test_statistics_use_all_reports_not_only_alerts():
     state.save_report(report_normal)
 
     service = TransactionAuditService(
-        blockchain=SimpleNamespace(get_statistics=lambda: {}, chain=[]),
+        blockchain=SimpleNamespace(get_statistics=lambda: {}, chain=[], get_all_transactions=lambda: []),
         detector=detector,
         state=state,
         training_service=SimpleNamespace(get_clean_training_transactions=lambda txs: []),

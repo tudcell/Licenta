@@ -3,11 +3,12 @@
 import logging
 
 from flask import Blueprint
-from flask_jwt_extended import get_jwt, get_jwt_identity, jwt_required
+from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from ..app_context import get_app_ctx
 from ..rate_limit import rate_limit
 from ..responses import api_success, get_pagination_params
+from ..security import current_principal
 
 logger = logging.getLogger("blockchain_audit")
 
@@ -55,7 +56,7 @@ def get_block(index):
 @jwt_required()
 def mine_block():
     app_ctx = get_app_ctx()
-    result = app_ctx.blockchain_service.mine_block(get_jwt().get("role", "viewer"))
+    result = app_ctx.blockchain_service.mine_block(current_principal())
 
     logger.info(
         "Block #%d mined with %d transactions, %d anomalies by %s",

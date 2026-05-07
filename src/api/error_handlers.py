@@ -15,7 +15,6 @@ from src.domain.errors import (
     NotFoundError,
     ValidationError,
 )
-from src.service.exceptions import ServiceError
 
 from .responses import api_error
 
@@ -32,8 +31,6 @@ _DEFAULT_STATUS = {
 
 
 def _status_for(exc: DomainError) -> int:
-    if isinstance(exc, ServiceError):
-        return exc.status_code
     for cls, code in _DEFAULT_STATUS.items():
         if isinstance(exc, cls):
             return code
