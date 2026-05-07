@@ -13,13 +13,13 @@ from src.service.detector_training_service import DetectorTrainingService
 
 class TransactionIngestionService:
     def __init__(
-        self,
-        blockchain: Blockchain,
-        blockchain_repo: JsonBlockchainRepository,
-        detector: AnomalyDetector,
-        state: AnalysisState,
-        training_service: DetectorTrainingService,
-        auto_train: bool,
+            self,
+            blockchain: Blockchain,
+            blockchain_repo: JsonBlockchainRepository,
+            detector: AnomalyDetector,
+            state: AnalysisState,
+            training_service: DetectorTrainingService,
+            auto_train: bool,
     ):
         self.blockchain = blockchain
         self._blockchain_repo = blockchain_repo

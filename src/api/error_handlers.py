@@ -15,7 +15,6 @@ from src.domain.errors import (
     NotFoundError,
     ValidationError,
 )
-
 from .responses import api_error
 
 logger = logging.getLogger("blockchain_audit")

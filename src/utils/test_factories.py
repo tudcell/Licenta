@@ -17,11 +17,11 @@ class TransactionFactory:
 
     @staticmethod
     def create_login_event(
-        user_id: str,
-        sender_address: str,
-        ip_address: str,
-        user_agent: Optional[str] = None,
-        success: bool = True,
+            user_id: str,
+            sender_address: str,
+            ip_address: str,
+            user_agent: Optional[str] = None,
+            success: bool = True,
     ) -> Transaction:
         tx_type = TransactionType.LOGIN if success else TransactionType.LOGIN_FAILED
         risk = RiskLevel.LOW if success else RiskLevel.MEDIUM
@@ -34,11 +34,11 @@ class TransactionFactory:
 
     @staticmethod
     def create_data_access_event(
-        user_id: str,
-        sender_address: str,
-        resource_id: str,
-        action: str,
-        success: bool = True,
+            user_id: str,
+            sender_address: str,
+            resource_id: str,
+            action: str,
+            success: bool = True,
     ) -> Transaction:
         type_map = {
             "read": TransactionType.DATA_READ,
@@ -56,10 +56,10 @@ class TransactionFactory:
 
     @staticmethod
     def create_transfer_event(
-        sender_address: str,
-        recipient_address: str,
-        amount: float,
-        currency: str = "RON",
+            sender_address: str,
+            recipient_address: str,
+            amount: float,
+            currency: str = "RON",
     ) -> Transaction:
         risk = RiskLevel.HIGH if amount > 10000 else RiskLevel.MEDIUM if amount > 1000 else RiskLevel.LOW
         return Transaction(

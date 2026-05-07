@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional
 from src.domain.entities.transaction import TransactionType
 from src.domain.errors import ValidationError
 
-
 _AUTH_TYPES = {
     TransactionType.LOGIN,
     TransactionType.LOGIN_FAILED,

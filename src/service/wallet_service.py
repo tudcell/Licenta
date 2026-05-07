@@ -19,10 +19,10 @@ from src.utils.pagination import build_pagination_metadata, paginate_sequence
 
 class WalletService:
     def __init__(
-        self,
-        wallet_manager: WalletManager,
-        users: UserRepository,
-        transactions: TransactionIndexRepository,
+            self,
+            wallet_manager: WalletManager,
+            users: UserRepository,
+            transactions: TransactionIndexRepository,
     ):
         self._wallet_manager = wallet_manager
         self._users = users

@@ -38,10 +38,10 @@ def _build_cipher(secret: str) -> Fernet:
 
 class JsonWalletRepository:
     def __init__(
-        self,
-        wallets_dir: str,
-        encryption_key: str,
-        legacy_keys: Optional[Iterable[str]] = None,
+            self,
+            wallets_dir: str,
+            encryption_key: str,
+            legacy_keys: Optional[Iterable[str]] = None,
     ):
         if not encryption_key:
             raise ValueError(

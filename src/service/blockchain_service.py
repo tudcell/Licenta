@@ -17,13 +17,13 @@ from src.utils.pagination import paginate_sequence
 
 class BlockchainService:
     def __init__(
-        self,
-        blockchain: Blockchain,
-        mining_service: MiningAnalysisService,
-        transactions: TransactionIndexRepository,
-        alerts: AlertRepository,
-        detector_is_fitted_fn,
-        event_bus: EventBus | None = None,
+            self,
+            blockchain: Blockchain,
+            mining_service: MiningAnalysisService,
+            transactions: TransactionIndexRepository,
+            alerts: AlertRepository,
+            detector_is_fitted_fn,
+            event_bus: EventBus | None = None,
     ):
         self._blockchain = blockchain
         self._mining = mining_service

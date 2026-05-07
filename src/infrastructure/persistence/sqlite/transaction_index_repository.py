@@ -6,7 +6,6 @@ from dataclasses import asdict, dataclass
 from typing import Optional, Tuple
 
 from src.domain.entities.transaction import Transaction
-
 from .connection import SqliteConnection
 
 
@@ -59,13 +58,13 @@ class TransactionIndexRepository:
         self._connection = connection
 
     def index(
-        self,
-        tx: Transaction,
-        block_index: int = None,
-        tx_status: str = "PENDING",
-        is_flagged: bool = False,
-        ml_score: float = None,
-        ml_reason: str = None,
+            self,
+            tx: Transaction,
+            block_index: int = None,
+            tx_status: str = "PENDING",
+            is_flagged: bool = False,
+            ml_score: float = None,
+            ml_reason: str = None,
     ) -> None:
         with self._connection.open() as conn:
             existing = conn.execute(
@@ -101,11 +100,11 @@ class TransactionIndexRepository:
             conn.commit()
 
     def update_state(
-        self,
-        transaction_id: str,
-        block_index: int = None,
-        tx_status: str = None,
-        is_flagged: Optional[bool] = None,
+            self,
+            transaction_id: str,
+            block_index: int = None,
+            tx_status: str = None,
+            is_flagged: Optional[bool] = None,
     ) -> bool:
         updates = []
         params: list = []
@@ -131,13 +130,13 @@ class TransactionIndexRepository:
             return cursor.rowcount > 0
 
     def search(
-        self,
-        sender: str = None,
-        tx_type: str = None,
-        status: str = None,
-        flagged: Optional[bool] = None,
-        page: int = 1,
-        per_page: int = 20,
+            self,
+            sender: str = None,
+            tx_type: str = None,
+            status: str = None,
+            flagged: Optional[bool] = None,
+            page: int = 1,
+            per_page: int = 20,
     ) -> Tuple[list[TransactionIndexEntry], int]:
         conditions: list[str] = []
         params: list = []

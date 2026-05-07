@@ -12,10 +12,10 @@ from src.service.analysis_state import AnalysisState
 
 class MiningAnalysisService:
     def __init__(
-        self,
-        blockchain: Blockchain,
-        blockchain_repo: JsonBlockchainRepository,
-        state: AnalysisState,
+            self,
+            blockchain: Blockchain,
+            blockchain_repo: JsonBlockchainRepository,
+            state: AnalysisState,
     ):
         self.blockchain = blockchain
         self._blockchain_repo = blockchain_repo

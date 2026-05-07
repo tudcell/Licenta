@@ -3,8 +3,9 @@ Merkle Tree implementation for cryptographic aggregation of transactions.
 Allows efficient verification of transaction inclusion in a block.
 """
 
-from typing import List, Optional, Tuple
 from dataclasses import dataclass
+from typing import List, Optional, Tuple
+
 from .hashing import HashUtils
 
 
@@ -227,5 +228,3 @@ class MerkleTree:
 
     def __str__(self) -> str:
         return f"MerkleTree(transactions={len(self.transactions)}, root={self.get_root_hash()[:16]}...)"
-
-

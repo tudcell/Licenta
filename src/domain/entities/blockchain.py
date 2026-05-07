@@ -70,7 +70,7 @@ class Blockchain:
             )
             new_block.mine()
             self.chain.append(new_block)
-            self.mempool = self.mempool[self.config.max_transactions_per_block :]
+            self.mempool = self.mempool[self.config.max_transactions_per_block:]
             return new_block
 
     def validate_chain(self) -> tuple[bool, Optional[str]]:

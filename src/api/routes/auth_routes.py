@@ -12,7 +12,6 @@ from flask_jwt_extended import (
 )
 
 from src.domain.errors import AuthError, ValidationError
-
 from ..app_context import get_app_ctx
 from ..rate_limit import rate_limit
 from ..responses import api_success

@@ -11,12 +11,12 @@ class DomainError(Exception):
     default_code: Optional[str] = None
 
     def __init__(
-        self,
-        message: str,
-        *,
-        error_code: Optional[str] = None,
-        errors: Optional[list] = None,
-        data: Any = None,
+            self,
+            message: str,
+            *,
+            error_code: Optional[str] = None,
+            errors: Optional[list] = None,
+            data: Any = None,
     ) -> None:
         super().__init__(message)
         self.message = message

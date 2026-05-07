@@ -65,4 +65,3 @@ def rate_limit(limit: int, window_seconds: int, key_func: Callable[[], str] | No
         return wrapper
 
     return decorator
-

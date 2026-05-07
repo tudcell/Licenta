@@ -36,8 +36,10 @@ class Wallet:
         transaction.signature = self._key_pair.sign(transaction.get_signable_data())
         return transaction
 
-    def create_and_sign_transaction(self, transaction_type, data: Dict[str, Any], metadata: Dict[str, Any] = None) -> Transaction:
-        tx = Transaction(transaction_type=transaction_type, sender_address=self.address, data=data, metadata=metadata or {})
+    def create_and_sign_transaction(self, transaction_type, data: Dict[str, Any],
+                                    metadata: Dict[str, Any] = None) -> Transaction:
+        tx = Transaction(transaction_type=transaction_type, sender_address=self.address, data=data,
+                         metadata=metadata or {})
         return self.sign_transaction(tx)
 
     def to_dict(self) -> Dict[str, Any]:

@@ -20,10 +20,10 @@ logger = logging.getLogger("blockchain_audit")
 
 class BackupService:
     def __init__(
-        self,
-        snapshot_dir: Path,
-        backup_sources: Dict[str, Path],
-        snapshot_retention_count: int,
+            self,
+            snapshot_dir: Path,
+            backup_sources: Dict[str, Path],
+            snapshot_retention_count: int,
     ):
         self._snapshot_dir = snapshot_dir
         self._backup_sources = backup_sources

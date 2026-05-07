@@ -39,7 +39,8 @@ class AuthService:
             wallet_name=user_record.get("wallet_name"),
         )
 
-    def register_user(self, principal: Principal, username: str, password: str, role: str, wallet_name: Optional[str]) -> dict:
+    def register_user(self, principal: Principal, username: str, password: str, role: str,
+                      wallet_name: Optional[str]) -> dict:
         principal.require(Role.ADMIN)
         self._validate_username(username)
         self._validate_password(password)
@@ -75,6 +76,7 @@ class AuthService:
             raise ValidationError("Invalid role. Options: admin, operator, viewer")
 
     def _create_user_record(self, username: str, password: str, role: str, wallet_name: Optional[str]) -> None:
-        if self._users.create(username=username, password_hash=hash_password(password), role=role, wallet_name=wallet_name):
+        if self._users.create(username=username, password_hash=hash_password(password), role=role,
+                              wallet_name=wallet_name):
             return
         raise ConflictError(f"User '{username}' already exists", error_code="USER_EXISTS")

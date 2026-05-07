@@ -11,4 +11,3 @@ jwt = JWTManager()
 
 # SocketIO for real-time WebSocket communication
 socketio = SocketIO()
-

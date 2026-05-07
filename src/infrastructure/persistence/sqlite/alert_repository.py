@@ -37,7 +37,7 @@ class AlertRepository:
             cursor = conn.execute(
                 """
                 INSERT INTO alerts
-                    (transaction_id, alert_type, severity, anomaly_score, confidence, explanation)
+                (transaction_id, alert_type, severity, anomaly_score, confidence, explanation)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
@@ -53,11 +53,11 @@ class AlertRepository:
             return cursor.lastrowid
 
     def list(
-        self,
-        page: int = 1,
-        per_page: int = 20,
-        severity: str = None,
-        is_resolved: Optional[bool] = None,
+            self,
+            page: int = 1,
+            per_page: int = 20,
+            severity: str = None,
+            is_resolved: Optional[bool] = None,
     ) -> Tuple[list, int]:
         conditions: list[str] = []
         params: list = []
@@ -87,8 +87,12 @@ class AlertRepository:
         with self._connection.open() as conn:
             cursor = conn.execute(
                 """
-                UPDATE alerts SET is_resolved = 1, resolved_at = ?, resolved_by = ?
-                WHERE id = ? AND is_resolved = 0
+                UPDATE alerts
+                SET is_resolved = 1,
+                    resolved_at = ?,
+                    resolved_by = ?
+                WHERE id = ?
+                  AND is_resolved = 0
                 """,
                 (datetime.now(timezone.utc).isoformat(), resolved_by, alert_id),
             )

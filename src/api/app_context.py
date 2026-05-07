@@ -8,7 +8,6 @@ from flask import current_app
 
 from src.infrastructure.persistence import PickleModelStore
 from src.infrastructure.persistence.sqlite import (
-    AlertRepository,
     TokenBlocklistRepository,
     TransactionIndexRepository,
     UserRepository,

@@ -24,14 +24,14 @@ RETRAIN_WINDOW_SIZE = 2000
 
 class AnomalyService:
     def __init__(
-        self,
-        detector: AnomalyDetector,
-        training: DetectorTrainingService,
-        audit: TransactionAuditService,
-        blockchain: Blockchain,
-        alerts: AlertRepository,
-        transactions: TransactionIndexRepository,
-        model_store: PickleModelStore,
+            self,
+            detector: AnomalyDetector,
+            training: DetectorTrainingService,
+            audit: TransactionAuditService,
+            blockchain: Blockchain,
+            alerts: AlertRepository,
+            transactions: TransactionIndexRepository,
+            model_store: PickleModelStore,
     ):
         self._detector = detector
         self._training = training
@@ -83,7 +83,7 @@ class AnomalyService:
             }, message
         except ValidationError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception("Error training detector")
             raise InternalError(f"Training error: {exc}", error_code="TRAINING_ERROR") from exc
 
@@ -91,7 +91,8 @@ class AnomalyService:
         analyzer_stats = self._audit.get_statistics()
         return {**analyzer_stats, "persistent_alerts": self._alerts.stats()}
 
-    def get_alerts(self, page: int, per_page: int, severity: str = None, resolved_param: str = None) -> Tuple[dict, dict]:
+    def get_alerts(self, page: int, per_page: int, severity: str = None, resolved_param: str = None) -> Tuple[
+        dict, dict]:
         is_resolved = self._parse_resolved_filter(resolved_param)
         alerts, total = self._alerts.list(
             page=page,
@@ -140,7 +141,7 @@ class AnomalyService:
         return {
             "training_mode": "sliding_window_retrain",
             "window_size": RETRAIN_WINDOW_SIZE,
-            "indexed_non_flagged": len(indexed_rows),
+            "indexed_non_flagged": len(entries),
             "matched_transactions": len(ordered_transactions),
             "training_samples": len(clean_transactions),
             "stats": self._detector.training_stats,

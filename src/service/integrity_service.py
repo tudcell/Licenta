@@ -14,10 +14,10 @@ from src.service.transaction_audit_service import TransactionAuditService
 
 class IntegrityService:
     def __init__(
-        self,
-        blockchain: Blockchain,
-        detector: AnomalyDetector,
-        audit: TransactionAuditService,
+            self,
+            blockchain: Blockchain,
+            detector: AnomalyDetector,
+            audit: TransactionAuditService,
     ):
         self._blockchain = blockchain
         self._detector = detector

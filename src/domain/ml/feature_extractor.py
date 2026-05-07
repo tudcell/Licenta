@@ -3,11 +3,12 @@ Feature extraction module for ML transaction analysis.
 Transforms transactions into stable numerical vectors for anomaly detection.
 """
 
-import numpy as np
 from collections import defaultdict, deque
-from typing import List, Dict, Any, Tuple, Optional, Deque
-from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import List, Dict, Any, Tuple, Optional, Deque
+
+import numpy as np
 
 from src.domain.entities.transaction import Transaction, TransactionType
 
@@ -246,12 +247,12 @@ class FeatureExtractor:
         state.day_amount_sum += amount
 
     def _build_context_from_state(
-        self,
-        transaction: Transaction,
-        tx_time: datetime,
-        sender_states: Dict[str, "FeatureExtractor._ActorWindowState"],
-        receiver_states: Dict[str, "FeatureExtractor._ActorWindowState"],
-        sender_last_tx_time: Dict[str, datetime],
+            self,
+            transaction: Transaction,
+            tx_time: datetime,
+            sender_states: Dict[str, "FeatureExtractor._ActorWindowState"],
+            receiver_states: Dict[str, "FeatureExtractor._ActorWindowState"],
+            sender_last_tx_time: Dict[str, datetime],
     ) -> Dict[str, float | int]:
         sender_address = transaction.sender_address
         sender_state = sender_states[sender_address]
@@ -307,12 +308,12 @@ class FeatureExtractor:
         }
 
     def _ingest_transaction_state(
-        self,
-        transaction: Transaction,
-        tx_time: datetime,
-        sender_states: Dict[str, "FeatureExtractor._ActorWindowState"],
-        receiver_states: Dict[str, "FeatureExtractor._ActorWindowState"],
-        sender_last_tx_time: Dict[str, datetime],
+            self,
+            transaction: Transaction,
+            tx_time: datetime,
+            sender_states: Dict[str, "FeatureExtractor._ActorWindowState"],
+            receiver_states: Dict[str, "FeatureExtractor._ActorWindowState"],
+            sender_last_tx_time: Dict[str, datetime],
     ) -> None:
         amount = self._extract_amount(transaction)
         sender_address = transaction.sender_address
@@ -346,9 +347,9 @@ class FeatureExtractor:
         return is_auth, is_data, is_transfer, is_admin, is_failure
 
     def extract_features(
-        self,
-        transaction: Transaction,
-        historical_transactions: List[Transaction] = None,
+            self,
+            transaction: Transaction,
+            historical_transactions: List[Transaction] = None,
     ) -> TransactionFeatures:
         """Extracts robust features from a transaction using sender history."""
         historical_transactions = historical_transactions or []
@@ -363,7 +364,8 @@ class FeatureExtractor:
         is_weekend = 1 if day_of_week >= 5 else 0
         is_night = 1 if hour_of_day < 6 else 0
 
-        is_auth_event, is_data_event, is_transfer_event, is_admin_event, is_failure_event = self._get_transaction_groups(transaction)
+        is_auth_event, is_data_event, is_transfer_event, is_admin_event, is_failure_event = self._get_transaction_groups(
+            transaction)
 
         amount = self._extract_amount(transaction)
         amount_log = float(np.log1p(max(amount, 0.0)))
@@ -468,7 +470,8 @@ class FeatureExtractor:
             is_weekend = 1 if day_of_week >= 5 else 0
             is_night = 1 if hour_of_day < 6 else 0
 
-            is_auth_event, is_data_event, is_transfer_event, is_admin_event, is_failure_event = self._get_transaction_groups(tx)
+            is_auth_event, is_data_event, is_transfer_event, is_admin_event, is_failure_event = self._get_transaction_groups(
+                tx)
             amount = self._extract_amount(tx)
             amount_log = float(np.log1p(max(amount, 0.0)))
             is_high_amount = 1 if amount > self.HIGH_AMOUNT_THRESHOLD else 0
@@ -577,4 +580,3 @@ class FeatureExtractor:
             'risk_level_encoded': 'Risk level encoded from low to critical.',
             'is_failed_attempt': 'Whether the event is a failed login/access attempt.',
         }
-

@@ -57,12 +57,12 @@ class AnomalyDetector:
     """Isolation Forest based anomaly detector with calibrated thresholds."""
 
     def __init__(
-        self,
-        contamination: float = 0.02,
-        n_estimators: int = 300,
-        max_samples: str = 'auto',
-        random_state: int = 42,
-        anomaly_threshold: float = -0.62,
+            self,
+            contamination: float = 0.02,
+            n_estimators: int = 300,
+            max_samples: str = 'auto',
+            random_state: int = 42,
+            anomaly_threshold: float = -0.62,
     ):
         self.contamination = contamination
         self.n_estimators = n_estimators
@@ -243,15 +243,15 @@ class AnomalyDetector:
         return float(1.0 - np.exp(-margin))
 
     def _generate_explanation(
-        self,
-        features: TransactionFeatures,
-        final_score: float,
-        model_score: float,
-        rule_penalty: float,
-        threshold: float,
-        is_anomaly: bool,
-        decision_source: str,
-        hard_rule_reason: Optional[str],
+            self,
+            features: TransactionFeatures,
+            final_score: float,
+            model_score: float,
+            rule_penalty: float,
+            threshold: float,
+            is_anomaly: bool,
+            decision_source: str,
+            hard_rule_reason: Optional[str],
     ) -> str:
         reasons: List[str] = []
 
@@ -497,8 +497,10 @@ class AnomalyDetector:
         amount_stats = state.get('amount_stats') or detector.training_stats.get('amount_distribution', {})
         detector._amount_mean = amount_stats.get('mean', 0.0)
         detector._amount_std = amount_stats.get('std', 0.0)
-        detector._amount_high_threshold = amount_stats.get('high_threshold', detector._amount_mean + (3.0 * detector._amount_std))
-        detector._amount_very_high_threshold = amount_stats.get('very_high_threshold', detector._amount_mean + (4.0 * detector._amount_std))
+        detector._amount_high_threshold = amount_stats.get('high_threshold',
+                                                           detector._amount_mean + (3.0 * detector._amount_std))
+        detector._amount_very_high_threshold = amount_stats.get('very_high_threshold',
+                                                                detector._amount_mean + (4.0 * detector._amount_std))
         return detector
 
     def __str__(self) -> str:

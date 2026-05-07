@@ -5,7 +5,6 @@ from __future__ import annotations
 from src.domain.entities.transaction import Transaction, TransactionType
 from src.domain.value_objects import RiskLevel
 
-
 _HIGH_RISK_LEVELS = {RiskLevel.HIGH, RiskLevel.CRITICAL}
 _DIRTY_TYPES = {
     TransactionType.LOGIN_FAILED,

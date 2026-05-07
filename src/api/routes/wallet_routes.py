@@ -6,7 +6,6 @@ from flask import Blueprint, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from src.domain.errors import ValidationError
-
 from ..app_context import get_app_ctx
 from ..responses import api_success, get_pagination_params
 from ..security import current_principal

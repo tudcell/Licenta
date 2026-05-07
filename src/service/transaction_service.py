@@ -32,15 +32,15 @@ logger = logging.getLogger("blockchain_audit")
 
 class TransactionService:
     def __init__(
-        self,
-        wallet_manager: WalletManager,
-        blockchain: Blockchain,
-        ingestion: TransactionIngestionService,
-        audit: TransactionAuditService,
-        users: UserRepository,
-        transactions: TransactionIndexRepository,
-        alerts: AlertRepository,
-        event_bus: Optional[EventBus] = None,
+            self,
+            wallet_manager: WalletManager,
+            blockchain: Blockchain,
+            ingestion: TransactionIngestionService,
+            audit: TransactionAuditService,
+            users: UserRepository,
+            transactions: TransactionIndexRepository,
+            alerts: AlertRepository,
+            event_bus: Optional[EventBus] = None,
     ):
         self._wallets = wallet_manager
         self._blockchain = blockchain
@@ -52,12 +52,12 @@ class TransactionService:
         self._event_bus: EventBus = event_bus or NullEventBus()
 
     def create_transaction(
-        self,
-        principal: Principal,
-        transaction_type: TransactionType,
-        transaction_data: Dict[str, Any],
-        wallet_name: Optional[str],
-        metadata: Optional[Dict[str, Any]],
+            self,
+            principal: Principal,
+            transaction_type: TransactionType,
+            transaction_data: Dict[str, Any],
+            wallet_name: Optional[str],
+            metadata: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
         principal.require(Role.ADMIN, Role.OPERATOR)
         user = self._users.get(principal.username)
@@ -135,13 +135,13 @@ class TransactionService:
         return {"transaction": tx.to_dict(), "analysis": report.to_dict()}
 
     def list_indexed_transactions(
-        self,
-        page: int,
-        per_page: int,
-        sender: Optional[str] = None,
-        tx_type: Optional[str] = None,
-        tx_status: Optional[str] = None,
-        flagged: Optional[bool] = None,
+            self,
+            page: int,
+            per_page: int,
+            sender: Optional[str] = None,
+            tx_type: Optional[str] = None,
+            tx_status: Optional[str] = None,
+            flagged: Optional[bool] = None,
     ) -> tuple[dict, dict]:
         entries, total = self._transactions.search(
             sender=sender,

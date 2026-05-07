@@ -14,11 +14,11 @@ from src.service.detector_training_service import DetectorTrainingService
 
 class TransactionAuditService:
     def __init__(
-        self,
-        blockchain: Blockchain,
-        detector: AnomalyDetector,
-        state: AnalysisState,
-        training_service: DetectorTrainingService,
+            self,
+            blockchain: Blockchain,
+            detector: AnomalyDetector,
+            state: AnalysisState,
+            training_service: DetectorTrainingService,
     ):
         self.blockchain = blockchain
         self.detector = detector

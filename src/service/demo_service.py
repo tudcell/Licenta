@@ -20,11 +20,11 @@ logger = logging.getLogger("blockchain_audit")
 
 class DemoService:
     def __init__(
-        self,
-        wallet_manager: WalletManager,
-        ingestion: TransactionIngestionService,
-        alerts: AlertRepository,
-        transactions: TransactionIndexRepository,
+            self,
+            wallet_manager: WalletManager,
+            ingestion: TransactionIngestionService,
+            alerts: AlertRepository,
+            transactions: TransactionIndexRepository,
     ):
         self._wallets = wallet_manager
         self._ingestion = ingestion

@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple, Optional
 
-
 from src.domain.entities.transaction import Transaction, TransactionType
 from src.domain.entities.wallet import Wallet, WalletManager
 from src.utils.test_factories import TransactionFactory
@@ -143,7 +142,8 @@ class TrainingDataGenerator:
     def _get_profile(self, wallet: Wallet) -> UserProfile:
         return self.user_profiles[wallet.address]
 
-    def _choose_business_day(self, base_date: Optional[datetime] = None, days_back: int = 45, allow_weekend: bool = False) -> datetime:
+    def _choose_business_day(self, base_date: Optional[datetime] = None, days_back: int = 45,
+                             allow_weekend: bool = False) -> datetime:
         base = base_date or datetime.now(timezone.utc)
         for _ in range(200):
             candidate = base - timedelta(days=random.randint(0, days_back))
@@ -269,7 +269,8 @@ class TrainingDataGenerator:
 
     def _build_recent_history(self, wallet: Wallet, count: int = 12) -> List[Transaction]:
         history: List[Transaction] = []
-        session_start = self._normal_session_start(self._get_profile(wallet), base_date=datetime.now(timezone.utc) - timedelta(days=7))
+        session_start = self._normal_session_start(self._get_profile(wallet),
+                                                   base_date=datetime.now(timezone.utc) - timedelta(days=7))
         while len(history) < count:
             session = self._generate_session(wallet, session_start)
             history.extend(session)
@@ -305,9 +306,11 @@ class TrainingDataGenerator:
     def generate_anomaly_night_activity(self) -> Transaction:
         wallet = self._get_user()
         base = self._choose_business_day(allow_weekend=True)
-        timestamp = base.replace(hour=random.randint(0, 4), minute=random.randint(0, 59), second=random.randint(0, 59), microsecond=0)
+        timestamp = base.replace(hour=random.randint(0, 4), minute=random.randint(0, 59), second=random.randint(0, 59),
+                                 microsecond=0)
         tx = TransactionFactory.create_data_access_event(
-            wallet.name, wallet.address, random.choice(self.sensitive_resources), random.choice(['read', 'write', 'delete']), True
+            wallet.name, wallet.address, random.choice(self.sensitive_resources),
+            random.choice(['read', 'write', 'delete']), True
         )
         tx.metadata['anomaly_type'] = 'night_activity'
         tx.metadata['risk_level'] = 'high' if tx.transaction_type == TransactionType.DATA_DELETE else 'medium'
@@ -331,7 +334,8 @@ class TrainingDataGenerator:
         weekend = (base + timedelta(days=days_until_sat or 7)) - timedelta(weeks=random.randint(1, 4))
         if random.random() < 0.5:
             weekend += timedelta(days=1)
-        timestamp = weekend.replace(hour=random.randint(0, 23), minute=random.randint(0, 59), second=random.randint(0, 59), microsecond=0)
+        timestamp = weekend.replace(hour=random.randint(0, 23), minute=random.randint(0, 59),
+                                    second=random.randint(0, 59), microsecond=0)
         tx = TransactionFactory.create_data_access_event(
             wallet.name, wallet.address, random.choice(self.sensitive_resources), random.choice(['read', 'write']), True
         )
@@ -358,7 +362,8 @@ class TrainingDataGenerator:
         sequence: List[Transaction] = []
         for i in range(count):
             timestamp = base + timedelta(seconds=i * random.choice([1, 2, 3]))
-            tx = TransactionFactory.create_transfer_event(wallet.address, recipient.address, round(random.uniform(500, 2500), 2), 'RON')
+            tx = TransactionFactory.create_transfer_event(wallet.address, recipient.address,
+                                                          round(random.uniform(500, 2500), 2), 'RON')
             tx.metadata['anomaly_type'] = 'burst_activity'
             tx.metadata['risk_level'] = 'high'
             tx.metadata['burst_index'] = i
@@ -405,7 +410,8 @@ class TrainingDataGenerator:
         transactions = self._generate_session_based_normal(count)
         return transactions[:count] if len(transactions) > count + 10 else transactions
 
-    def generate_training_dataset(self, normal_count: int = 800, anomaly_count: int = 60) -> Tuple[List[Transaction], List[str]]:
+    def generate_training_dataset(self, normal_count: int = 800, anomaly_count: int = 60) -> Tuple[
+        List[Transaction], List[str]]:
         transactions = list(self.generate_only_normal(normal_count))
         labels = ['normal'] * len(transactions)
 
@@ -435,7 +441,8 @@ class TrainingDataGenerator:
         txs, labs = zip(*paired)
         return list(txs), list(labs)
 
-    def generate_evaluation_stream(self, normal_count: int = 600, anomaly_count: int = 50) -> Tuple[List[Transaction], List[str]]:
+    def generate_evaluation_stream(self, normal_count: int = 600, anomaly_count: int = 50) -> Tuple[
+        List[Transaction], List[str]]:
         """Generates a chronological stream with anomalies injected into recent context."""
         transactions = list(self.generate_only_normal(normal_count))
         labels = ['normal'] * len(transactions)

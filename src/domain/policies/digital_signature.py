@@ -3,15 +3,16 @@ Digital signature module using ECDSA.
 Ensures authenticity and non-repudiation of transactions.
 """
 
+import base64
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Tuple, Optional, Any
+from typing import Any
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.backends import default_backend
-from cryptography.exceptions import InvalidSignature
-import base64
 
 
 @dataclass
@@ -226,4 +227,3 @@ class DigitalSignature:
         except Exception as e:
             print(f"Error verifying with hex key: {e}")
             return False
-

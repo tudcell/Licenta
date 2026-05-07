@@ -58,4 +58,3 @@ class AuditReport:
             "anomaly_result": self.anomaly_result.to_dict() if self.anomaly_result else None,
             "timestamp": self.timestamp,
         }
-

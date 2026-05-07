@@ -32,4 +32,3 @@ class DetectorTrainingService:
                 f"(have {len(clean_training_data)} clean out of {len(source)} total)"
             )
         self.detector.fit(clean_training_data)
-
