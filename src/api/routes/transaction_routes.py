@@ -1,13 +1,14 @@
 """Transaction routes blueprint. Thin HTTP layer over the transaction service."""
 
 from flask import Blueprint, request
-from flask_jwt_extended import get_jwt, get_jwt_identity, jwt_required
+from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from src.domain.policies.transaction_payload import parse_transaction_request
 
 from ..app_context import get_app_ctx
 from ..rate_limit import rate_limit
 from ..responses import api_error, api_success, get_pagination_params
+from ..security import current_principal
 
 transaction_bp = Blueprint("transactions", __name__, url_prefix="/api")
 
@@ -53,8 +54,7 @@ def create_transaction():
     parsed = parse_transaction_request(request_payload, get_jwt_identity())
 
     data = app_ctx.transaction_service.create_transaction(
-        username=get_jwt_identity(),
-        user_role=get_jwt().get("role", "viewer"),
+        principal=current_principal(),
         transaction_type=parsed.transaction_type,
         transaction_data=parsed.data,
         wallet_name=parsed.wallet_name,

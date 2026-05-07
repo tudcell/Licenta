@@ -16,6 +16,7 @@ from src.domain.errors import AuthError, ValidationError
 from ..app_context import get_app_ctx
 from ..rate_limit import rate_limit
 from ..responses import api_success
+from ..security import current_principal
 
 logger = logging.getLogger("blockchain_audit")
 
@@ -38,18 +39,18 @@ def login():
     username, password = _read_credentials()
     authenticated = app_ctx.auth_service.authenticate(username, password)
 
-    additional_claims = {"role": authenticated.role, "wallet_name": authenticated.wallet_name}
+    additional_claims = {"role": authenticated.role.value, "wallet_name": authenticated.wallet_name}
     access_token = create_access_token(identity=username, additional_claims=additional_claims)
     refresh_token = create_refresh_token(identity=username, additional_claims=additional_claims)
 
-    logger.info("User authenticated: %s (role: %s)", username, authenticated.role)
+    logger.info("User authenticated: %s (role: %s)", username, authenticated.role.value)
     return api_success(
         data={
             "access_token": access_token,
             "refresh_token": refresh_token,
             "user": {
                 "username": username,
-                "role": authenticated.role,
+                "role": authenticated.role.value,
                 "wallet_name": authenticated.wallet_name,
             },
         },
@@ -86,11 +87,10 @@ def logout():
 @jwt_required()
 def register():
     app_ctx = get_app_ctx()
-    claims = get_jwt()
     data = request.get_json(silent=True) or {}
 
     created_user = app_ctx.auth_service.register_user(
-        requester_role=claims.get("role", "viewer"),
+        principal=current_principal(),
         username=(data.get("username") or "").strip(),
         password=data.get("password") or "",
         role=data.get("role", "viewer"),

@@ -11,7 +11,7 @@ from ..responses import api_error
 def register_jwt_callbacks(app: Flask, jwt: JWTManager) -> None:
     @jwt.token_in_blocklist_loader
     def check_if_token_revoked(_jwt_header, jwt_payload):
-        return app.metadata_store.is_token_revoked(jwt_payload["jti"])
+        return app.token_repo.is_revoked(jwt_payload["jti"])
 
     @jwt.expired_token_loader
     def expired_token_callback(_jwt_header, _jwt_payload):

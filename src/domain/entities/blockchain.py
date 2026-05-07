@@ -2,46 +2,30 @@
 
 from __future__ import annotations
 
-import logging
 import threading
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 from src.domain.entities.block import Block, GenesisBlock
-from src.domain.entities.transaction import Transaction, TransactionType
+from src.domain.entities.transaction import Transaction
 from src.domain.policies import MerkleTree
-
-logger = logging.getLogger("blockchain_audit")
 
 
 @dataclass
 class BlockchainConfig:
+    """Pure-domain configuration. Persistence concerns live in adapters."""
     difficulty: int = 4
     max_transactions_per_block: int = 100
-    data_dir: str = "blockchain_data"
-    auto_save: bool = True
-
-
-PersistHook = Callable[["Blockchain"], None]
 
 
 class Blockchain:
-    def __init__(self, config: Optional[BlockchainConfig] = None, persist_hook: Optional[PersistHook] = None):
+    def __init__(self, config: Optional[BlockchainConfig] = None):
         self.config = config or BlockchainConfig()
         self.chain: List[Block] = []
         self.mempool: List[Transaction] = []
         self._lock = threading.RLock()
-        self._persist_hook: Optional[PersistHook] = persist_hook
         if not self.chain:
             self._create_genesis_block()
-
-    def set_persist_hook(self, hook: Optional[PersistHook]) -> None:
-        """Register a callback invoked after every state-changing operation."""
-        self._persist_hook = hook
-
-    def _maybe_persist(self) -> None:
-        if self._persist_hook and self.config.auto_save:
-            self._persist_hook(self)
 
     def _create_genesis_block(self) -> None:
         self.chain = [GenesisBlock(difficulty=self.config.difficulty)]
@@ -71,7 +55,6 @@ class Blockchain:
             if not transaction.verify_signature() or transaction.transaction_id in self._all_transaction_ids():
                 return False
             self.mempool.append(transaction)
-            self._maybe_persist()
             return True
 
     def mine_pending_transactions(self) -> Optional[Block]:
@@ -88,7 +71,6 @@ class Blockchain:
             new_block.mine()
             self.chain.append(new_block)
             self.mempool = self.mempool[self.config.max_transactions_per_block :]
-            self._maybe_persist()
             return new_block
 
     def validate_chain(self) -> tuple[bool, Optional[str]]:
@@ -107,9 +89,6 @@ class Blockchain:
     def get_block(self, index: int) -> Optional[Block]:
         return self.chain[index] if 0 <= index < len(self.chain) else None
 
-    def get_block_by_hash(self, block_hash: str) -> Optional[Block]:
-        return next((block for block in self.chain if block.block_hash == block_hash), None)
-
     def get_transaction(self, transaction_id: str) -> Optional[tuple[Transaction, Block]]:
         for block in self.chain:
             for tx in block.transactions:
@@ -117,16 +96,8 @@ class Blockchain:
                     return tx, block
         return None
 
-    def get_transactions_by_address(self, address: str) -> List[Transaction]:
-        matches: List[Transaction] = []
-        for block in self.chain:
-            for tx in block.transactions:
-                if tx.sender_address == address or tx.data.get("recipient") == address:
-                    matches.append(tx)
-        return matches
-
-    def get_transactions_by_type(self, tx_type: TransactionType) -> List[Transaction]:
-        return [tx for block in self.chain for tx in block.transactions if tx.transaction_type == tx_type]
+    # Deleted: get_block_by_hash, get_transactions_by_address, get_transactions_by_type
+    # were never called outside their own module.
 
     def get_all_transactions(self) -> List[Transaction]:
         return [tx for block in self.chain for tx in block.transactions]
@@ -172,8 +143,6 @@ class Blockchain:
             "config": {
                 "difficulty": self.config.difficulty,
                 "max_transactions_per_block": self.config.max_transactions_per_block,
-                "data_dir": self.config.data_dir,
-                "auto_save": self.config.auto_save,
             },
             "chain": [block.to_dict() for block in self.chain],
             "mempool": [tx.to_dict() for tx in self.mempool],

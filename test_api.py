@@ -44,8 +44,7 @@ with app.test_client() as client:
     assert r.status_code == 200
     stats = r.get_json()['data']['analysis']
     assert 'detector_fitted' in stats
-    assert 'detector_trained' in stats
-    print("[OK] 3b. Anomaly stats expose detector trained flags")
+    print("[OK] 3b. Anomaly stats expose detector trained flag")
 
     # 4. Wrong credentials
     r = client.post('/api/auth/login', json={'username': 'admin', 'password': 'wrong'})
@@ -192,7 +191,7 @@ with app.test_client() as client:
     print("[OK] 14. Paginated mempool")
 
     # 14b. Mine a flagged transaction and ensure the indexed status becomes MINED
-    getattr(app, 'metadata_store').update_transaction_state(
+    getattr(app, 'transaction_index_repo').update_state(
         created_tx_id,
         tx_status='FLAGGED',
         is_flagged=True,

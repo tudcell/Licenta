@@ -82,6 +82,22 @@ class AnomalyDetector:
         self.is_fitted = False
         self.training_stats: Dict[str, Any] = {}
 
+        # Pre-fit defaults for stats consulted by predict()/_compute_feature_risk_penalty().
+        # Keeping them populated here avoids `getattr(self, '_score_p1', default)` ladders later.
+        self._model_score_mean = -0.5
+        self._model_score_std = 0.05
+        self._score_mean = -0.5
+        self._score_std = 0.05
+        self._score_p1 = anomaly_threshold
+        self._score_p5 = anomaly_threshold
+        self._score_p10 = anomaly_threshold
+        self._adaptive_threshold = anomaly_threshold
+        self._effective_threshold = anomaly_threshold
+        self._amount_mean = 0.0
+        self._amount_std = 0.0
+        self._amount_high_threshold = 0.0
+        self._amount_very_high_threshold = 0.0
+
     def fit(self, transactions: List[Transaction]) -> 'AnomalyDetector':
         """Trains the detector on clean/mostly-normal chronological transactions."""
         if len(transactions) < 25:
@@ -168,10 +184,8 @@ class AnomalyDetector:
     def _compute_feature_risk_penalty(self, features: TransactionFeatures) -> float:
         """Applies small, interpretable penalties for known suspicious patterns."""
         penalty = 0.0
-        amount_mean = getattr(self, '_amount_mean', 0.0)
-        amount_std = getattr(self, '_amount_std', 0.0)
-        high_threshold = getattr(self, '_amount_high_threshold', amount_mean + (3.0 * amount_std))
-        very_high_threshold = getattr(self, '_amount_very_high_threshold', amount_mean + (4.0 * amount_std))
+        high_threshold = self._amount_high_threshold
+        very_high_threshold = self._amount_very_high_threshold
 
         # Basic temporal/event penalties
         if features.is_night:
@@ -299,7 +313,7 @@ class AnomalyDetector:
         model_score = float(self.model.score_samples(X_scaled)[0])
         rule_penalty = self._compute_feature_risk_penalty(features)
         final_score = model_score - rule_penalty
-        threshold = getattr(self, '_effective_threshold', self.anomaly_threshold)
+        threshold = self._effective_threshold
         model_is_anomaly = final_score < threshold
         is_anomaly = model_is_anomaly
 
@@ -320,7 +334,7 @@ class AnomalyDetector:
 
         decision_source = 'hard_rule' if hard_rule_triggered else 'model'
 
-        confidence = self._calculate_confidence(final_score, threshold, getattr(self, '_score_std', 0.05))
+        confidence = self._calculate_confidence(final_score, threshold, self._score_std)
         if hard_rule_triggered:
             confidence = max(confidence, 0.9)
 
@@ -401,7 +415,7 @@ class AnomalyDetector:
             'true_negatives': tn,
             'false_positives': fp,
             'false_negatives': fn,
-            'threshold': getattr(self, '_effective_threshold', self.anomaly_threshold),
+            'threshold': self._effective_threshold,
             'score_mean': float(np.mean([r.anomaly_score for r in results])) if results else 0.0,
             'score_min': float(np.min([r.anomaly_score for r in results])) if results else 0.0,
             'score_max': float(np.max([r.anomaly_score for r in results])) if results else 0.0,
@@ -437,21 +451,21 @@ class AnomalyDetector:
             'is_fitted': self.is_fitted,
             'training_stats': self.training_stats,
             'score_stats': {
-                'model_mean': getattr(self, '_model_score_mean', -0.5),
-                'model_std': getattr(self, '_model_score_std', 0.05),
-                'mean': getattr(self, '_score_mean', -0.5),
-                'std': getattr(self, '_score_std', 0.05),
-                'p1': getattr(self, '_score_p1', self.anomaly_threshold),
-                'p5': getattr(self, '_score_p5', self.anomaly_threshold),
-                'p10': getattr(self, '_score_p10', self.anomaly_threshold),
-                'adaptive_threshold': getattr(self, '_adaptive_threshold', self.anomaly_threshold),
-                'effective_threshold': getattr(self, '_effective_threshold', self.anomaly_threshold),
+                'model_mean': self._model_score_mean,
+                'model_std': self._model_score_std,
+                'mean': self._score_mean,
+                'std': self._score_std,
+                'p1': self._score_p1,
+                'p5': self._score_p5,
+                'p10': self._score_p10,
+                'adaptive_threshold': self._adaptive_threshold,
+                'effective_threshold': self._effective_threshold,
             },
             'amount_stats': {
-                'mean': getattr(self, '_amount_mean', 0.0),
-                'std': getattr(self, '_amount_std', 0.0),
-                'high_threshold': getattr(self, '_amount_high_threshold', 0.0),
-                'very_high_threshold': getattr(self, '_amount_very_high_threshold', 0.0),
+                'mean': self._amount_mean,
+                'std': self._amount_std,
+                'high_threshold': self._amount_high_threshold,
+                'very_high_threshold': self._amount_very_high_threshold,
             },
             'config': {
                 'contamination': self.contamination,

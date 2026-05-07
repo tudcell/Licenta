@@ -6,18 +6,26 @@ from typing import Any, Dict, List, Optional
 
 from src.domain.entities.audit_report import AuditReport
 from src.domain.entities.blockchain import Blockchain
+from src.infrastructure.persistence.json import JsonBlockchainRepository
 from src.service.analysis_state import AnalysisState
 
 
 class MiningAnalysisService:
-    def __init__(self, blockchain: Blockchain, state: AnalysisState):
+    def __init__(
+        self,
+        blockchain: Blockchain,
+        blockchain_repo: JsonBlockchainRepository,
+        state: AnalysisState,
+    ):
         self.blockchain = blockchain
+        self._blockchain_repo = blockchain_repo
         self.state = state
 
     def mine_and_analyze(self) -> Optional[Dict[str, Any]]:
         new_block = self.blockchain.mine_pending_transactions()
         if not new_block:
             return None
+        self._blockchain_repo.save(self.blockchain)
 
         results: List[AuditReport] = []
         for tx in new_block.transactions:
@@ -50,4 +58,3 @@ class MiningAnalysisService:
             "analysis_results": [item.to_dict() for item in results],
             "anomalies_found": sum(1 for item in results if item.is_suspicious),
         }
-

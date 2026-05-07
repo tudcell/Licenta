@@ -3,12 +3,13 @@
 import logging
 
 from flask import Blueprint, request
-from flask_jwt_extended import get_jwt, get_jwt_identity, jwt_required
+from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from src.domain.errors import ValidationError
 
 from ..app_context import get_app_ctx
 from ..responses import api_success, get_pagination_params
+from ..security import current_principal
 
 logger = logging.getLogger("blockchain_audit")
 
@@ -21,8 +22,7 @@ def get_wallets():
     app_ctx = get_app_ctx()
     page, per_page = get_pagination_params()
     data, pagination = app_ctx.wallet_service.list_wallets(
-        username=get_jwt_identity(),
-        role=get_jwt().get("role", "viewer"),
+        principal=current_principal(),
         page=page,
         per_page=per_page,
     )
@@ -37,10 +37,8 @@ def create_wallet():
     if "name" not in data:
         raise ValidationError("Field 'name' is required")
 
-    username = get_jwt_identity()
     result = app_ctx.wallet_service.create_wallet(
-        username=username,
-        role=get_jwt().get("role", "viewer"),
+        principal=current_principal(),
         name=data["name"],
         assign_to_user=data.get("assign_to_user"),
     )
@@ -48,7 +46,7 @@ def create_wallet():
         "Wallet created: %s assigned_to=%s by=%s",
         result["wallet_name"],
         result["assigned_to"],
-        username,
+        get_jwt_identity(),
     )
     return api_success(
         data={"wallet": result["wallet"], "assigned_to": result["assigned_to"]},
@@ -63,8 +61,7 @@ def get_wallet(name):
     app_ctx = get_app_ctx()
     page, per_page = get_pagination_params()
     data, pagination = app_ctx.wallet_service.get_wallet_details(
-        username=get_jwt_identity(),
-        role=get_jwt().get("role", "viewer"),
+        principal=current_principal(),
         wallet_name=name,
         page=page,
         per_page=per_page,

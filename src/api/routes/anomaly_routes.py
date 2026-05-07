@@ -1,4 +1,4 @@
-"""Anomaly detection routes blueprint."""
+"""Anomaly detection + demo data routes blueprint."""
 
 from __future__ import annotations
 
@@ -6,11 +6,12 @@ import logging
 from typing import Any, Dict
 
 from flask import Blueprint, request
-from flask_jwt_extended import get_jwt, get_jwt_identity, jwt_required
+from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from ..app_context import get_app_ctx
 from ..rate_limit import rate_limit
 from ..responses import api_success, get_pagination_params
+from ..security import current_principal
 
 logger = logging.getLogger("blockchain_audit")
 
@@ -24,7 +25,7 @@ def train_detector():
     app_ctx = get_app_ctx()
     payload: Dict[str, Any] = request.get_json(silent=True) or {}
     data, message = app_ctx.anomaly_service.train_detector(
-        role=get_jwt().get("role", "viewer"),
+        principal=current_principal(),
         payload=payload,
     )
     return api_success(data=data, message=message)
@@ -35,7 +36,7 @@ def train_detector():
 @jwt_required()
 def retrain_detector():
     app_ctx = get_app_ctx()
-    data, message = app_ctx.anomaly_service.retrain_detector(role=get_jwt().get("role", "viewer"))
+    data, message = app_ctx.anomaly_service.retrain_detector(principal=current_principal())
     return api_success(data=data, message=message)
 
 
@@ -64,11 +65,7 @@ def get_alerts():
 @jwt_required()
 def resolve_alert(alert_id: int):
     app_ctx = get_app_ctx()
-    app_ctx.anomaly_service.resolve_alert(
-        role=get_jwt().get("role", "viewer"),
-        alert_id=alert_id,
-        resolved_by=get_jwt_identity(),
-    )
+    app_ctx.anomaly_service.resolve_alert(principal=current_principal(), alert_id=alert_id)
     logger.info("Alert #%s resolved by %s", alert_id, get_jwt_identity())
     return api_success(message=f"Alert #{alert_id} marked as resolved")
 
@@ -78,9 +75,5 @@ def resolve_alert(alert_id: int):
 def generate_demo_data():
     app_ctx = get_app_ctx()
     payload = request.get_json(silent=True) or {}
-    data, message = app_ctx.anomaly_service.generate_demo_data(
-        generated_by=get_jwt_identity(),
-        role=get_jwt().get("role", "viewer"),
-        payload=payload,
-    )
+    data, message = app_ctx.demo_service.generate(principal=current_principal(), payload=payload)
     return api_success(data=data, message=message)

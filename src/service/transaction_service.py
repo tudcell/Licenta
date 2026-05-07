@@ -1,4 +1,4 @@
-"""Transaction use-cases orchestrating wallet management, analysis, and metadata indexing."""
+"""Transaction use-cases: create + index + alert + publish."""
 
 from __future__ import annotations
 
@@ -6,13 +6,25 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from src.domain.authorization import Role, require_role
+from src.domain.authorization import Principal, Role
+from src.domain.entities.blockchain import Blockchain
 from src.domain.entities.transaction import TransactionType
 from src.domain.entities.wallet import WalletManager
-from src.domain.errors import AuthError, ConflictError, ForbiddenError, ValidationError
-from src.infrastructure.persistence import MetadataStore
+from src.domain.errors import (
+    AuthError,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    ValidationError,
+)
 from src.domain.events import DomainEvent, EventBus, NullEventBus
-from src.service.transaction_analyzer import TransactionAnalyzer
+from src.infrastructure.persistence.sqlite import (
+    AlertRepository,
+    TransactionIndexRepository,
+    UserRepository,
+)
+from src.service.transaction_audit_service import TransactionAuditService
+from src.service.transaction_ingestion_service import TransactionIngestionService
 from src.utils.pagination import build_pagination_metadata
 
 logger = logging.getLogger("blockchain_audit")
@@ -22,43 +34,58 @@ class TransactionService:
     def __init__(
         self,
         wallet_manager: WalletManager,
-        metadata_store: MetadataStore,
-        analyzer: TransactionAnalyzer,
+        blockchain: Blockchain,
+        ingestion: TransactionIngestionService,
+        audit: TransactionAuditService,
+        users: UserRepository,
+        transactions: TransactionIndexRepository,
+        alerts: AlertRepository,
         event_bus: Optional[EventBus] = None,
     ):
-        self.wallet_manager = wallet_manager
-        self.metadata_store = metadata_store
-        self.analyzer = analyzer
-        self.event_bus: EventBus = event_bus or NullEventBus()
+        self._wallets = wallet_manager
+        self._blockchain = blockchain
+        self._ingestion = ingestion
+        self._audit = audit
+        self._users = users
+        self._transactions = transactions
+        self._alerts = alerts
+        self._event_bus: EventBus = event_bus or NullEventBus()
 
     def create_transaction(
         self,
-        username: str,
-        user_role: str,
+        principal: Principal,
         transaction_type: TransactionType,
         transaction_data: Dict[str, Any],
         wallet_name: Optional[str],
         metadata: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        require_role(user_role, Role.ADMIN, Role.OPERATOR)
-        user = self.metadata_store.get_user(username)
+        principal.require(Role.ADMIN, Role.OPERATOR)
+        user = self._users.get(principal.username)
         if not user:
             raise AuthError("Authenticated user not found")
 
-        requested_wallet_name = wallet_name or user.get("wallet_name") or username
-        if user.get("wallet_name") and requested_wallet_name != user["wallet_name"] and user_role != Role.ADMIN.value:
+        owned_wallet = user.get("wallet_name")
+        requested_wallet_name = wallet_name or owned_wallet
+        if not requested_wallet_name:
+            raise ValidationError(
+                "User has no wallet assigned. Create a wallet first via /api/wallet.",
+                error_code="USER_HAS_NO_WALLET",
+            )
+        if owned_wallet and requested_wallet_name != owned_wallet and principal.role is not Role.ADMIN:
             raise ForbiddenError(
                 "Wallet does not belong to the authenticated user",
                 error_code="WALLET_FORBIDDEN",
             )
 
-        wallet = self._resolve_transaction_wallet(requested_wallet_name, username)
-
-        if not user.get("wallet_name"):
-            self.metadata_store.assign_wallet_to_user(username, requested_wallet_name)
+        wallet = self._wallets.get_wallet(requested_wallet_name)
+        if wallet is None:
+            raise NotFoundError(
+                f"Wallet '{requested_wallet_name}' not found. Create it first via /api/wallet.",
+                error_code="WALLET_NOT_FOUND",
+            )
 
         tx_metadata: Dict[str, Any] = dict(metadata or {})
-        tx_metadata.setdefault("submitted_by", username)
+        tx_metadata.setdefault("submitted_by", principal.username)
         tx_metadata.setdefault("flagged", False)
 
         tx = wallet.create_and_sign_transaction(
@@ -67,11 +94,11 @@ class TransactionService:
             metadata=tx_metadata,
         )
 
-        report = self.analyzer.add_transaction(tx)
+        report = self._ingestion.add_transaction(tx)
 
         if not report.signature_valid:
-            self._index_transaction(tx, report, tx_status="REJECTED", is_flagged=True)
-            self.metadata_store.save_alert(report)
+            self._index(tx, report, tx_status="REJECTED", is_flagged=True)
+            self._alerts.save(report)
             raise ValidationError(
                 "Transaction signature is invalid",
                 error_code="INVALID_SIGNATURE",
@@ -79,10 +106,9 @@ class TransactionService:
             )
 
         if not report.added_to_mempool:
-            self._index_transaction(tx, report, tx_status="REJECTED", is_flagged=report.is_suspicious)
+            self._index(tx, report, tx_status="REJECTED", is_flagged=report.is_suspicious)
             if report.is_suspicious:
-                self.metadata_store.save_alert(report)
-
+                self._alerts.save(report)
             raise ConflictError(
                 "Transaction was not added to the mempool",
                 error_code="MEMPOOL_REJECTED",
@@ -90,14 +116,14 @@ class TransactionService:
             )
 
         tx_status = "FLAGGED" if report.flagged_for_review else "PENDING"
-        self._index_transaction(tx, report, tx_status=tx_status, is_flagged=report.flagged_for_review)
+        self._index(tx, report, tx_status=tx_status, is_flagged=report.flagged_for_review)
 
         if report.is_suspicious:
-            alert_id = self.metadata_store.save_alert(report)
-            self.event_bus.publish(
+            alert_id = self._alerts.save(report)
+            self._event_bus.publish(
                 DomainEvent(
                     name="anomaly_detected",
-                    payload=self._build_alert_event_payload(tx, report, alert_id),
+                    payload=self._alert_payload(tx, report, alert_id),
                 )
             )
             logger.warning(
@@ -117,7 +143,7 @@ class TransactionService:
         tx_status: Optional[str] = None,
         flagged: Optional[bool] = None,
     ) -> tuple[dict, dict]:
-        indexed_txs, total = self.metadata_store.search_transactions(
+        indexed_txs, total = self._transactions.search(
             sender=sender,
             tx_type=tx_type,
             status=tx_status,
@@ -129,8 +155,8 @@ class TransactionService:
         return {"transactions": indexed_txs, "count": len(indexed_txs)}, pagination
 
     def get_transaction_details(self, transaction_id: str) -> Optional[dict]:
-        proof = self.analyzer.blockchain.verify_transaction_proof(transaction_id)
-        index_record = self.metadata_store.get_transaction_index(transaction_id)
+        proof = self._blockchain.verify_transaction_proof(transaction_id)
+        index_record = self._transactions.get(transaction_id)
         if proof:
             payload = dict(proof)
             if index_record:
@@ -141,37 +167,27 @@ class TransactionService:
         return None
 
     def analyze_transaction(self, transaction_id: str):
-        return self.analyzer.analyze_transaction(transaction_id)
+        return self._audit.analyze_transaction(transaction_id)
 
-    def _resolve_transaction_wallet(self, requested_wallet_name: str, username: str):
-        wallet = self.wallet_manager.get_wallet(requested_wallet_name)
-        if wallet is None:
-            return self.wallet_manager.create_wallet(requested_wallet_name, metadata={"owner": username})
-        return wallet
-
-    def _index_transaction(self, tx, report, tx_status: str, is_flagged: bool) -> None:
-        self.metadata_store.index_transaction(
+    def _index(self, tx, report, tx_status: str, is_flagged: bool) -> None:
+        self._transactions.index(
             tx,
             tx_status=tx_status,
             is_flagged=is_flagged,
-            ml_score=self._analysis_score(report),
-            ml_reason=self._analysis_reason(report),
+            ml_score=self._score(report),
+            ml_reason=self._reason(report),
         )
 
     @staticmethod
-    def _analysis_score(report) -> Optional[float]:
-        if not report.anomaly_result:
-            return None
-        return float(report.anomaly_result.anomaly_score)
+    def _score(report) -> Optional[float]:
+        return float(report.anomaly_result.anomaly_score) if report.anomaly_result else None
 
     @staticmethod
-    def _analysis_reason(report) -> Optional[str]:
-        if not report.anomaly_result:
-            return None
-        return report.anomaly_result.explanation
+    def _reason(report) -> Optional[str]:
+        return report.anomaly_result.explanation if report.anomaly_result else None
 
     @staticmethod
-    def _build_alert_event_payload(tx, report, alert_id: int) -> dict:
+    def _alert_payload(tx, report, alert_id: int) -> dict:
         return {
             "alert_id": alert_id,
             "transaction_id": tx.transaction_id,
