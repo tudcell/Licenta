@@ -7,9 +7,33 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple, Optional
 
 
-from src.domain.entities.transaction import Transaction, TransactionType, TransactionFactory
+from src.domain.entities.transaction import Transaction, TransactionType
 from src.domain.entities.wallet import Wallet, WalletManager
-from src.infrastructure.persistence import JsonWalletRepository
+from src.utils.test_factories import TransactionFactory
+
+
+class _InMemoryWalletRepository:
+    """Throwaway wallet store used by training/demo generators.
+
+    Training data lives only for the duration of a fit() call, so the
+    wallets it creates don't need disk persistence — and definitely
+    don't need to use the production encryption key.
+    """
+
+    def __init__(self):
+        self._wallets: dict = {}
+
+    def exists(self, name: str) -> bool:
+        return name in self._wallets
+
+    def list_names(self):
+        return sorted(self._wallets.keys())
+
+    def save(self, wallet: Wallet) -> None:
+        self._wallets[wallet.name] = wallet
+
+    def load(self, name: str):
+        return self._wallets.get(name)
 
 
 @dataclass
@@ -32,13 +56,7 @@ class TrainingDataGenerator:
     """Generates realistic normal timelines and contextual anomalies."""
 
     def __init__(self, num_users: int = 20):
-        data_dir = os.environ.get('DATA_DIR', 'data')
-        wallets_dir = os.path.join(data_dir, "training_wallets")
-        repository = JsonWalletRepository(
-            wallets_dir=wallets_dir,
-            encryption_key=os.environ.get("WALLET_ENCRYPTION_KEY"),
-        )
-        self.wallet_manager = WalletManager(repository=repository)
+        self.wallet_manager = WalletManager(repository=_InMemoryWalletRepository())
         self.users: List[Wallet] = []
         self.user_profiles: Dict[str, UserProfile] = {}
 
@@ -167,9 +185,7 @@ class TrainingDataGenerator:
 
     def _sign_transaction(self, tx: Transaction, wallet: Wallet, timestamp: datetime) -> Transaction:
         tx.timestamp = timestamp.isoformat()
-        tx.public_key = wallet.public_key
-        tx.sign(wallet.private_key)
-        return tx
+        return wallet.sign_transaction(tx)
 
     def _normal_operation(self, wallet: Wallet, timestamp: datetime) -> Transaction:
         profile = self._get_profile(wallet)

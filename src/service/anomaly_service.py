@@ -109,7 +109,7 @@ class AnomalyService:
     def retrain_detector(self, principal: Principal) -> Tuple[dict, str]:
         principal.require(Role.ADMIN, Role.OPERATOR)
 
-        indexed_rows, _ = self._transactions.search(
+        entries, _ = self._transactions.search(
             flagged=False,
             page=1,
             per_page=RETRAIN_WINDOW_SIZE,
@@ -121,8 +121,8 @@ class AnomalyService:
         tx_by_id.update({tx.transaction_id: tx for tx in mempool_transactions})
 
         ordered_transactions = []
-        for row in indexed_rows:
-            tx = tx_by_id.get(str(row.get("transaction_id")))
+        for entry in entries:
+            tx = tx_by_id.get(entry.transaction_id)
             if tx:
                 ordered_transactions.append(tx)
 

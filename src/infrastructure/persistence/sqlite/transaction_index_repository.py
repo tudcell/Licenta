@@ -2,11 +2,56 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple
+from dataclasses import asdict, dataclass
+from typing import Optional, Tuple
 
 from src.domain.entities.transaction import Transaction
 
 from .connection import SqliteConnection
+
+
+@dataclass(frozen=True)
+class TransactionIndexEntry:
+    """Typed projection of a `transaction_index` row.
+
+    Booleans are real booleans here; the API layer is responsible for any
+    backward-compatible serialization (e.g. emitting `is_flagged` as `1`
+    for legacy clients via `to_legacy_dict()`).
+    """
+
+    transaction_id: str
+    block_index: Optional[int]
+    sender_address: str
+    transaction_type: str
+    amount: float
+    tx_status: str
+    is_flagged: bool
+    ml_score: Optional[float]
+    ml_reason: Optional[str]
+    timestamp: str
+    created_at: Optional[str]
+
+    @classmethod
+    def from_row(cls, row) -> "TransactionIndexEntry":
+        return cls(
+            transaction_id=row["transaction_id"],
+            block_index=row["block_index"],
+            sender_address=row["sender_address"],
+            transaction_type=row["transaction_type"],
+            amount=float(row["amount"] or 0.0),
+            tx_status=row["tx_status"],
+            is_flagged=bool(row["is_flagged"]),
+            ml_score=row["ml_score"],
+            ml_reason=row["ml_reason"],
+            timestamp=row["timestamp"],
+            created_at=row["created_at"] if "created_at" in row.keys() else None,
+        )
+
+    def to_legacy_dict(self) -> dict:
+        """API-shape dict with `is_flagged` as 0/1 for back-compat."""
+        out = asdict(self)
+        out["is_flagged"] = 1 if self.is_flagged else 0
+        return out
 
 
 class TransactionIndexRepository:
@@ -93,7 +138,7 @@ class TransactionIndexRepository:
         flagged: Optional[bool] = None,
         page: int = 1,
         per_page: int = 20,
-    ) -> Tuple[list, int]:
+    ) -> Tuple[list[TransactionIndexEntry], int]:
         conditions: list[str] = []
         params: list = []
 
@@ -124,12 +169,12 @@ class TransactionIndexRepository:
                 """,
                 params + [per_page, offset],
             ).fetchall()
-            return [dict(row) for row in rows], count
+            return [TransactionIndexEntry.from_row(row) for row in rows], count
 
-    def get(self, transaction_id: str) -> Optional[Dict]:
+    def get(self, transaction_id: str) -> Optional[TransactionIndexEntry]:
         with self._connection.open() as conn:
             row = conn.execute(
                 "SELECT * FROM transaction_index WHERE transaction_id = ?",
                 (transaction_id,),
             ).fetchone()
-            return dict(row) if row else None
+            return TransactionIndexEntry.from_row(row) if row else None

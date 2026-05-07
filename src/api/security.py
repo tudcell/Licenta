@@ -8,9 +8,7 @@ from src.domain.authorization import Principal, parse_role
 
 
 def current_principal() -> Principal:
-    claims = get_jwt()
     return Principal(
         username=get_jwt_identity(),
-        role=parse_role(claims.get("role")),
-        wallet_name=claims.get("wallet_name"),
+        role=parse_role(get_jwt().get("role")),
     )

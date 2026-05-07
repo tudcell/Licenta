@@ -6,8 +6,9 @@ import random
 from datetime import timedelta
 from typing import List, Optional, Tuple
 
-from src.domain.entities.transaction import Transaction, TransactionFactory
+from src.domain.entities.transaction import Transaction
 from src.domain.entities.wallet import Wallet, WalletManager
+from src.utils.test_factories import TransactionFactory
 from src.utils.training_data_generator import TrainingDataGenerator
 
 
@@ -87,8 +88,7 @@ class DataGenerator:
             tx.metadata["anomaly_type"] = "brute_force"
             tx.metadata["attempt_number"] = attempt_index + 1
             tx.timestamp = timestamp.isoformat()
-            tx.public_key = wallet.public_key
-            tx.sign(wallet.private_key)
+            wallet.sign_transaction(tx)
             txs.append(tx)
 
         txs.sort(key=lambda tx: tx.timestamp)

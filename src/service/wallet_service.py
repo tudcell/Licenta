@@ -68,7 +68,7 @@ class WalletService:
             )
 
         return {
-            "wallet": wallet.to_dict(include_private_key=False),
+            "wallet": wallet.to_dict(),
             "assigned_to": requested_owner,
             "wallet_name": clean_name,
         }
@@ -82,14 +82,15 @@ class WalletService:
         if principal.role is not Role.ADMIN and user and user.get("wallet_name") != wallet_name:
             raise ForbiddenError("Access forbidden to this wallet")
 
-        indexed_txs, total = self._transactions.search(
+        entries, total = self._transactions.search(
             sender=wallet.address,
             page=page,
             per_page=per_page,
         )
+        indexed_txs = [entry.to_legacy_dict() for entry in entries]
 
         return {
-            "wallet": wallet.to_dict(include_private_key=False),
+            "wallet": wallet.to_dict(),
             "transactions": indexed_txs,
             "transaction_count": total,
         }, build_pagination_metadata(page, per_page, total)

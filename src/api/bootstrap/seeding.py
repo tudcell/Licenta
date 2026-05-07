@@ -7,6 +7,7 @@ import os
 
 from flask import Flask
 
+from src.domain.entities.transaction import TransactionStatus
 from src.utils.password_security import hash_password
 
 logger = logging.getLogger("blockchain_audit")
@@ -27,7 +28,7 @@ def seed_metadata_index(app: Flask) -> None:
             app.transaction_index_repo.index(
                 tx,
                 block_index=block.index,
-                tx_status="MINED",
+                tx_status=TransactionStatus.MINED.value,
                 is_flagged=is_flagged,
             )
     logger.info("Existing transactions indexed in SQLite")
