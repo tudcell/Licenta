@@ -22,10 +22,6 @@ class AuditReport:
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     @property
-    def quarantined(self) -> bool:
-        return False
-
-    @property
     def is_suspicious(self) -> bool:
         return self.flagged_for_review or not self.signature_valid
 
@@ -54,7 +50,6 @@ class AuditReport:
             "is_suspicious": bool(self.is_suspicious),
             "flagged_for_review": bool(self.flagged_for_review),
             "added_to_mempool": bool(self.added_to_mempool),
-            "quarantined": False,
             "anomaly_result": self.anomaly_result.to_dict() if self.anomaly_result else None,
             "timestamp": self.timestamp,
         }
