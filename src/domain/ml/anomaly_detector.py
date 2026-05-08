@@ -259,23 +259,47 @@ class AnomalyDetector:
             reasons.append(f"night hour ({features.hour_of_day}:00)")
         if features.is_weekend:
             reasons.append("weekend activity")
-        if features.is_high_amount:
+
+        # Amount — same dynamic thresholds as _compute_feature_risk_penalty
+        if features.amount > self._amount_very_high_threshold:
+            reasons.append(
+                f"very high amount ({features.amount:.2f}, threshold={self._amount_very_high_threshold:.0f})")
+        elif features.amount > self._amount_high_threshold:
+            reasons.append(f"high amount ({features.amount:.2f}, threshold={self._amount_high_threshold:.0f})")
+        elif features.is_high_amount:
             reasons.append(f"high amount ({features.amount:.2f})")
+
         if features.is_failed_attempt:
             reasons.append("failed authentication/access")
-        if features.sender_tx_count_last_hour > 12:
+
+        # Sender frequency — match both penalty thresholds (>12 and >30)
+        if features.sender_tx_count_last_hour > 30:
+            reasons.append(f"excessive hourly activity ({features.sender_tx_count_last_hour}/hour)")
+        elif features.sender_tx_count_last_hour > 12:
             reasons.append(f"elevated hourly activity ({features.sender_tx_count_last_hour}/hour)")
+
         if features.sender_tx_count_last_day > 80:
             reasons.append(f"high daily activity ({features.sender_tx_count_last_day}/day)")
-        if features.has_prior_tx and features.time_since_last_tx < 10:
+
+        # Time since last tx — match both penalty thresholds (<2s and <10s)
+        if features.has_prior_tx and 0 <= features.time_since_last_tx < 2:
+            reasons.append(f"extremely short gap since last tx ({features.time_since_last_tx:.1f}s)")
+        elif features.has_prior_tx and features.time_since_last_tx < 10:
             reasons.append(f"very short gap since last tx ({features.time_since_last_tx:.1f}s)")
+
         if features.risk_level_encoded >= 2:
             risk_names = ['low', 'medium', 'high', 'critical']
             reasons.append(f"risk={risk_names[min(features.risk_level_encoded, 3)]}")
 
-        # NEW: Explanations for new features
+        # Admin event at night — has penalty but was missing from explanation
+        if features.is_admin_event and features.is_night:
+            reasons.append("administrative event during night hours")
+
+        # Burst/Spike
         if features.activity_spike_ratio > 4.0 and features.sender_tx_count_last_hour > 8:
             reasons.append(f"sudden spike in activity ({features.activity_spike_ratio:.1f}x normal rate)")
+
+        # Receiver
         if features.is_transfer_event:
             if features.receiver_amount_sum_last_day > 50000.0:
                 reasons.append("recipient accumulated high funds recently")

@@ -227,8 +227,8 @@ def _attach_services(app: Flask, domain: _Domain, adapters: _Adapters, socketio,
     )
     app.integrity_service = IntegrityService(
         blockchain=domain.blockchain,
-        detector=domain.detector,
         audit=audit,
+        transactions=adapters.transactions,
     )
     app.backup_service = BackupService(
         snapshot_dir=paths.snapshot_dir,
