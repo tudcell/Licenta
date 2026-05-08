@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 from sklearn.ensemble import IsolationForest
@@ -10,6 +10,70 @@ from sklearn.preprocessing import StandardScaler
 
 from src.domain.entities.transaction import Transaction
 from src.domain.ml.feature_extractor import FeatureExtractor, TransactionFeatures
+
+
+# ---------------------------------------------------------------------------
+# Penalty predicates
+# ---------------------------------------------------------------------------
+# The hybrid scoring pipeline adds a small "rule penalty" on top of the
+# IsolationForest score. Each predicate below describes a feature pattern
+# that historically tended to be anomalous; the *magnitude* of the bump it
+# contributes is no longer hand-coded — it's recomputed from the training
+# distribution every time the detector is fit. See
+# `AnomalyDetector._compute_penalty_weights` for the data-driven formula.
+#
+# The default weights below are kept only as a fallback for (a) detectors
+# that haven't been fit yet and (b) old pickle files persisted under the
+# previous, hand-tuned scheme.
+PenaltyPredicate = Callable[["TransactionFeatures", "AnomalyDetector"], bool]
+
+_PENALTY_PREDICATES: List[Tuple[str, PenaltyPredicate]] = [
+    ("is_night",                  lambda f, d: bool(f.is_night)),
+    ("is_weekend",                lambda f, d: bool(f.is_weekend)),
+    ("is_failed_attempt",         lambda f, d: bool(f.is_failed_attempt)),
+    ("amount_above_high",         lambda f, d: f.amount > d._amount_high_threshold),
+    ("amount_above_very_high",    lambda f, d: f.amount > d._amount_very_high_threshold),
+    ("moderate_high_amount",      lambda f, d: f.amount <= d._amount_high_threshold and bool(f.is_high_amount)),
+    ("risk_level_high",           lambda f, d: f.risk_level_encoded >= 2),
+    ("risk_level_critical",       lambda f, d: f.risk_level_encoded >= 3),
+    ("hourly_activity_elevated",  lambda f, d: f.sender_tx_count_last_hour > 12),
+    ("hourly_activity_high",      lambda f, d: f.sender_tx_count_last_hour > 30),
+    ("daily_activity_high",       lambda f, d: f.sender_tx_count_last_day > 80),
+    ("rapid_followup",            lambda f, d: bool(f.has_prior_tx) and 0 <= f.time_since_last_tx < 10),
+    ("very_rapid_followup",       lambda f, d: bool(f.has_prior_tx) and 0 <= f.time_since_last_tx < 2),
+    ("admin_at_night",            lambda f, d: bool(f.is_admin_event) and bool(f.is_night)),
+    ("activity_spike",            lambda f, d: f.activity_spike_ratio > 4.0 and f.sender_tx_count_last_hour > 8),
+    ("receiver_flooded",          lambda f, d: bool(f.is_transfer_event) and f.receiver_amount_sum_last_day > 50000.0),
+    ("receiver_inactive",         lambda f, d: bool(f.is_transfer_event) and f.receiver_tx_count_last_day == 0),
+]
+
+# Hand-tuned baseline; preserves the old behaviour for unfit detectors and
+# for predicates that don't have enough training samples to estimate.
+_DEFAULT_PENALTY_WEIGHTS: Dict[str, float] = {
+    "is_night":                 0.08,
+    "is_weekend":               0.06,
+    "is_failed_attempt":        0.09,
+    "amount_above_high":        0.07,
+    "amount_above_very_high":   0.08,
+    "moderate_high_amount":     0.03,
+    "risk_level_high":          0.05,
+    "risk_level_critical":      0.07,
+    "hourly_activity_elevated": 0.05,
+    "hourly_activity_high":     0.07,
+    "daily_activity_high":      0.05,
+    "rapid_followup":           0.06,
+    "very_rapid_followup":      0.08,
+    "admin_at_night":           0.04,
+    "activity_spike":           0.08,
+    "receiver_flooded":         0.06,
+    "receiver_inactive":        0.04,
+}
+
+# Predicates with fewer than this many positive samples in training data
+# can't be reliably weighted; we fall back to the hand-coded default.
+_MIN_PENALTY_SAMPLE_COUNT = 5
+# Cap individual learned weights to keep one rare predicate from dominating.
+_MAX_LEARNED_PENALTY = 0.20
 
 
 @dataclass
@@ -98,6 +162,11 @@ class AnomalyDetector:
         self._amount_high_threshold = 0.0
         self._amount_very_high_threshold = 0.0
 
+        # Per-predicate penalty weights. Recomputed from training data in
+        # `fit()`; the defaults are used for unfit detectors and as a fallback
+        # for predicates with too few positive samples to estimate reliably.
+        self._penalty_weights: Dict[str, float] = dict(_DEFAULT_PENALTY_WEIGHTS)
+
     def fit(self, transactions: List[Transaction]) -> 'AnomalyDetector':
         """Trains the detector on clean/mostly-normal chronological transactions."""
         if len(transactions) < 25:
@@ -120,13 +189,24 @@ class AnomalyDetector:
         self._amount_very_high_threshold = self._amount_mean + (4.0 * self._amount_std)
 
         train_model_scores = self.model.score_samples(X_scaled)
-        train_rule_penalties: List[float] = []
+
+        # Extract per-transaction features once; we need them to (a) learn
+        # the data-driven penalty weights and then (b) apply those weights
+        # to compute training penalties.
         history: List[Transaction] = []
+        train_features: List[TransactionFeatures] = []
         for tx in transactions:
             tx_features = self.feature_extractor.extract_features(tx, history)
-            train_rule_penalties.append(self._compute_feature_risk_penalty(tx_features))
+            train_features.append(tx_features)
             history.append(tx)
-        train_scores = train_model_scores - np.array(train_rule_penalties)
+
+        # Learn penalty weights from the training distribution, then apply them.
+        self._penalty_weights = self._compute_penalty_weights(train_features, train_model_scores)
+        train_rule_penalties = np.array(
+            [self._compute_feature_risk_penalty(f) for f in train_features]
+        )
+
+        train_scores = train_model_scores - train_rule_penalties
         adaptive_percentile = max(1.0, min(10.0, self.contamination * 100.0))
 
         self._model_score_mean = float(np.mean(train_model_scores))
@@ -162,10 +242,11 @@ class AnomalyDetector:
                 'effective_threshold': self._effective_threshold,
             },
             'penalty_distribution': {
-                'mean': float(np.mean(train_rule_penalties)) if train_rule_penalties else 0.0,
-                'std': float(np.std(train_rule_penalties)) if train_rule_penalties else 0.0,
-                'max': float(np.max(train_rule_penalties)) if train_rule_penalties else 0.0,
+                'mean': float(np.mean(train_rule_penalties)) if len(train_rule_penalties) else 0.0,
+                'std': float(np.std(train_rule_penalties)) if len(train_rule_penalties) else 0.0,
+                'max': float(np.max(train_rule_penalties)) if len(train_rule_penalties) else 0.0,
             },
+            'penalty_weights': dict(self._penalty_weights),
             'training_transaction_ids_sample': transaction_ids[:25],
             'anomaly_threshold': self.anomaly_threshold,
             'contamination': self.contamination,
@@ -182,59 +263,62 @@ class AnomalyDetector:
         return self
 
     def _compute_feature_risk_penalty(self, features: TransactionFeatures) -> float:
-        """Applies small, interpretable penalties for known suspicious patterns."""
+        """Sum the learned weights for every predicate that fires.
+
+        The set of predicates is fixed (declared in `_PENALTY_PREDICATES`) but
+        each predicate's weight is recomputed from training data — see
+        `_compute_penalty_weights`. The total is capped at 1.0 so the rule
+        layer can never single-handedly override a strong model signal.
+        """
         penalty = 0.0
-        high_threshold = self._amount_high_threshold
-        very_high_threshold = self._amount_very_high_threshold
-
-        # Basic temporal/event penalties
-        if features.is_night:
-            penalty += 0.08
-        if features.is_weekend:
-            penalty += 0.06
-        if features.is_failed_attempt:
-            penalty += 0.09
-
-        # Amount penalties
-        if features.amount > high_threshold:
-            penalty += 0.07
-            if features.amount > very_high_threshold:
-                penalty += 0.08
-        elif features.is_high_amount:
-            penalty += 0.03
-
-        # Risk level penalties
-        if features.risk_level_encoded >= 2:
-            penalty += 0.05
-        if features.risk_level_encoded >= 3:
-            penalty += 0.07
-
-        # Sender frequency penalties
-        if features.sender_tx_count_last_hour > 12:
-            penalty += 0.05
-        if features.sender_tx_count_last_hour > 30:
-            penalty += 0.07
-        if features.sender_tx_count_last_day > 80:
-            penalty += 0.05
-        if features.has_prior_tx and 0 <= features.time_since_last_tx < 10:
-            penalty += 0.06
-        if features.has_prior_tx and 0 <= features.time_since_last_tx < 2:
-            penalty += 0.08
-        if features.is_admin_event and features.is_night:
-            penalty += 0.04
-
-        # NEW: Burst/Spike penalty
-        if features.activity_spike_ratio > 4.0 and features.sender_tx_count_last_hour > 8:
-            penalty += 0.08
-
-        # NEW: Receiver penalties
-        if features.is_transfer_event:
-            if features.receiver_amount_sum_last_day > 50000.0:
-                penalty += 0.06
-            if features.receiver_tx_count_last_day == 0:
-                penalty += 0.04
-
+        for name, predicate in _PENALTY_PREDICATES:
+            if predicate(features, self):
+                penalty += self._penalty_weights.get(name, 0.0)
         return min(penalty, 1.0)
+
+    def _compute_penalty_weights(
+            self,
+            train_features: List[TransactionFeatures],
+            train_model_scores: np.ndarray,
+    ) -> Dict[str, float]:
+        """Derive a per-predicate penalty from the training distribution.
+
+        For each predicate, the weight is the gap between the population's
+        median IsolationForest score and the median score on the subset
+        where the predicate holds (clipped at 0 — features that *don't*
+        correlate with anomaly contribute nothing).
+
+        Limitations (worth mentioning in the thesis):
+          - Predicates that overlap (e.g. `amount_above_high` and
+            `amount_above_very_high`) are scored independently, so when both
+            fire their weights stack additively. This slightly over-penalises
+            correlated patterns, biasing the system toward false positives —
+            preferable to false negatives in a security audit context.
+          - Predicates with fewer than `_MIN_PENALTY_SAMPLE_COUNT` positive
+            occurrences in training data fall back to the hand-coded default
+            from `_DEFAULT_PENALTY_WEIGHTS` because the median is unstable
+            on tiny groups.
+        """
+        if len(train_features) == 0 or len(train_model_scores) == 0:
+            return dict(_DEFAULT_PENALTY_WEIGHTS)
+
+        baseline = float(np.median(train_model_scores))
+        weights: Dict[str, float] = {}
+
+        for name, predicate in _PENALTY_PREDICATES:
+            mask = np.fromiter(
+                (predicate(f, self) for f in train_features),
+                dtype=bool,
+                count=len(train_features),
+            )
+            positive = int(mask.sum())
+            if positive < _MIN_PENALTY_SAMPLE_COUNT:
+                weights[name] = _DEFAULT_PENALTY_WEIGHTS.get(name, 0.0)
+                continue
+            median_when_true = float(np.median(train_model_scores[mask]))
+            lift = max(0.0, baseline - median_when_true)
+            weights[name] = float(min(lift, _MAX_LEARNED_PENALTY))
+        return weights
 
     def _calculate_confidence(self, score: float, threshold: float, score_std: float) -> float:
         """Maps the distance from threshold into a smooth confidence value."""
@@ -491,6 +575,7 @@ class AnomalyDetector:
                 'high_threshold': self._amount_high_threshold,
                 'very_high_threshold': self._amount_very_high_threshold,
             },
+            'penalty_weights': dict(self._penalty_weights),
             'config': {
                 'contamination': self.contamination,
                 'n_estimators': self.n_estimators,
@@ -525,6 +610,16 @@ class AnomalyDetector:
                                                            detector._amount_mean + (3.0 * detector._amount_std))
         detector._amount_very_high_threshold = amount_stats.get('very_high_threshold',
                                                                 detector._amount_mean + (4.0 * detector._amount_std))
+        # Penalty weights: prefer the explicit `penalty_weights` from state,
+        # fall back to whatever training_stats persisted, fall back to the
+        # hand-coded defaults so older pickle files still load and behave
+        # identically to the previous fixed-weight scheme.
+        persisted_weights = state.get('penalty_weights') \
+            or detector.training_stats.get('penalty_weights') \
+            or {}
+        merged_weights = dict(_DEFAULT_PENALTY_WEIGHTS)
+        merged_weights.update({k: float(v) for k, v in persisted_weights.items() if k in merged_weights})
+        detector._penalty_weights = merged_weights
         return detector
 
     def __str__(self) -> str:
