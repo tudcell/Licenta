@@ -229,6 +229,7 @@ def _attach_services(app: Flask, domain: _Domain, adapters: _Adapters, socketio,
         blockchain=domain.blockchain,
         audit=audit,
         transactions=adapters.transactions,
+        alerts=adapters.alerts,
     )
     app.backup_service = BackupService(
         snapshot_dir=paths.snapshot_dir,

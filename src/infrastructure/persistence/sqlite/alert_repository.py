@@ -99,6 +99,32 @@ class AlertRepository:
             conn.commit()
             return cursor.rowcount > 0
 
+    def latest_by_transaction_ids(self, transaction_ids: list[str]) -> Dict[str, dict]:
+        """Map of transaction_id -> latest alert row, in one query.
+
+        Used by the audit-log export so we don't N+1 query when emitting one
+        line per chain transaction.
+        """
+        if not transaction_ids:
+            return {}
+        placeholders = ",".join("?" for _ in transaction_ids)
+        with self._connection.open() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT *
+                FROM alerts
+                WHERE transaction_id IN ({placeholders})
+                ORDER BY created_at DESC
+                """,
+                list(transaction_ids),
+            ).fetchall()
+        latest: Dict[str, dict] = {}
+        for row in rows:
+            tx_id = row["transaction_id"]
+            if tx_id not in latest:
+                latest[tx_id] = dict(row)
+        return latest
+
     def stats(self) -> Dict:
         with self._connection.open() as conn:
             total = conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]

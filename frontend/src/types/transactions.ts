@@ -52,7 +52,6 @@ export interface TransactionAuditReport {
   is_suspicious: boolean;
   flagged_for_review: boolean;
   added_to_mempool: boolean;
-  quarantined: boolean;
   anomaly_result: AnomalyResultPayload | null;
   timestamp: string;
 }
