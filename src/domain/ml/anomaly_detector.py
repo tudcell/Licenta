@@ -172,7 +172,19 @@ class AnomalyDetector:
         if len(transactions) < 25:
             raise ValueError("At least 25 transactions are required for stable training")
 
-        X, transaction_ids = self.feature_extractor.extract_features_batch(transactions)
+        # Sort once, up front, with the same key `extract_features_batch` uses
+        # internally. Every downstream pass (the batch matrix, the per-tx
+        # feature loop, the penalty mask) then iterates in the same order, so
+        # `train_model_scores[i]` and `train_features[i]` describe the same
+        # transaction. Without this, callers who pass an unsorted list would
+        # see the per-tx loop and the model scores misaligned and the learned
+        # penalty weights would correlate predicates with the wrong scores.
+        sorted_transactions = sorted(
+            transactions,
+            key=lambda tx: self.feature_extractor._parse_timestamp(tx.timestamp),
+        )
+
+        X, transaction_ids = self.feature_extractor.extract_features_batch(sorted_transactions)
         if X.size == 0:
             raise ValueError("No features could be extracted for training")
 
@@ -181,7 +193,7 @@ class AnomalyDetector:
 
         amounts = [
             float(tx.data.get('amount', 0.0) or 0.0) if tx.transaction_type.value == 'TRANSFER' else 0.0
-            for tx in transactions
+            for tx in sorted_transactions
         ]
         self._amount_mean = float(np.mean(amounts)) if amounts else 0.0
         self._amount_std = float(np.std(amounts)) if amounts else 0.0
@@ -192,10 +204,11 @@ class AnomalyDetector:
 
         # Extract per-transaction features once; we need them to (a) learn
         # the data-driven penalty weights and then (b) apply those weights
-        # to compute training penalties.
+        # to compute training penalties. Iteration order matches the sort
+        # above so it stays aligned with `train_model_scores`.
         history: List[Transaction] = []
         train_features: List[TransactionFeatures] = []
-        for tx in transactions:
+        for tx in sorted_transactions:
             tx_features = self.feature_extractor.extract_features(tx, history)
             train_features.append(tx_features)
             history.append(tx)
