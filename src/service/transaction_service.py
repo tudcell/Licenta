@@ -142,12 +142,14 @@ class TransactionService:
             tx_type: Optional[str] = None,
             tx_status: Optional[str] = None,
             flagged: Optional[bool] = None,
+            transaction_id: Optional[str] = None,
     ) -> tuple[dict, dict]:
         entries, total = self._transactions.search(
             sender=sender,
             tx_type=tx_type,
             status=tx_status,
             flagged=flagged,
+            transaction_id=transaction_id,
             page=page,
             per_page=per_page,
         )

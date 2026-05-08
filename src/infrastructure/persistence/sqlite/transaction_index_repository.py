@@ -135,12 +135,16 @@ class TransactionIndexRepository:
             tx_type: str = None,
             status: str = None,
             flagged: Optional[bool] = None,
+            transaction_id: Optional[str] = None,
             page: int = 1,
             per_page: int = 20,
     ) -> Tuple[list[TransactionIndexEntry], int]:
         conditions: list[str] = []
         params: list = []
 
+        if transaction_id:
+            conditions.append("transaction_id LIKE ?")
+            params.append(f"%{transaction_id}%")
         if sender:
             conditions.append("sender_address LIKE ?")
             params.append(f"%{sender}%")

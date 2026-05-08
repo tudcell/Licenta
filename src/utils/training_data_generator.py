@@ -152,6 +152,7 @@ class TrainingDataGenerator:
         return base
 
     def _normal_session_start(self, profile: UserProfile, base_date: Optional[datetime] = None) -> datetime:
+        now_utc = datetime.now(timezone.utc)
         allow_weekend = random.random() < profile.weekend_probability
         date = self._choose_business_day(base_date=base_date, allow_weekend=allow_weekend)
 
@@ -160,12 +161,18 @@ class TrainingDataGenerator:
         else:
             hour = random.randint(profile.work_start, profile.work_end)
 
-        return date.replace(
+        candidate = date.replace(
             hour=hour,
             minute=random.randint(0, 59),
             second=random.randint(0, 59),
             microsecond=0,
         )
+        # Never emit a session start in the future relative to wall-clock now;
+        # otherwise demo timestamps would push real user-submitted transactions
+        # off the first page.
+        if candidate > now_utc:
+            candidate = now_utc - timedelta(seconds=random.randint(60, 7200))
+        return candidate
 
     def _sample_amount_for_profile(self, profile: UserProfile) -> float:
         bucket = random.random()
@@ -184,6 +191,14 @@ class TrainingDataGenerator:
         return f"{profile.typical_ip_prefix}{random.randint(1, 254)}"
 
     def _sign_transaction(self, tx: Transaction, wallet: Wallet, timestamp: datetime) -> Transaction:
+        # Defensive clamp: no demo transaction may carry a timestamp in the
+        # future relative to wall-clock UTC. Several anomaly generators build
+        # sequences from `datetime.now()` and drift forward; without this
+        # clamp those drift past "now" and visually push real user-submitted
+        # transactions off the first page of the UI.
+        now_utc = datetime.now(timezone.utc)
+        if timestamp > now_utc:
+            timestamp = now_utc - timedelta(seconds=random.randint(0, 60))
         tx.timestamp = timestamp.isoformat()
         return wallet.sign_transaction(tx)
 
@@ -358,7 +373,12 @@ class TrainingDataGenerator:
         recipient = self._get_user()
         while recipient.address == wallet.address:
             recipient = self._get_user()
-        base = datetime.now(timezone.utc).replace(microsecond=0)
+        # Anchor the burst end at "a few seconds before now" so the entire
+        # sequence stays in the past while preserving the rapid 1-3s spacing
+        # that defines a burst pattern.
+        max_step = 3
+        burst_span = count * max_step + 30
+        base = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(seconds=burst_span)
         sequence: List[Transaction] = []
         for i in range(count):
             timestamp = base + timedelta(seconds=i * random.choice([1, 2, 3]))

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { Link } from "react-router-dom";
 
 import { PageShell } from "../../../components/common/PageShell";
 import { PaginationBar } from "../../../components/common/PaginationBar";
@@ -216,7 +217,15 @@ export function WalletsPage() {
                     <TableBody>
                       {detail.transactions.map((tx) => (
                         <TableRow key={tx.transaction_id}>
-                          <TableCell className="font-mono">{tx.transaction_id.slice(0, 12)}...</TableCell>
+                          <TableCell>
+                            <Link
+                              className="font-mono text-primary hover:underline"
+                              to={`/transactions/${tx.transaction_id}`}
+                              title={tx.transaction_id}
+                            >
+                              {tx.transaction_id.slice(0, 12)}...
+                            </Link>
+                          </TableCell>
                           <TableCell>{tx.transaction_type}</TableCell>
                           <TableCell>{tx.tx_status}</TableCell>
                           <TableCell className="text-right">{tx.amount}</TableCell>
