@@ -142,12 +142,14 @@ export function TransactionsPage() {
   const [typeFilterInput, setTypeFilterInput] = useState("");
   const [senderFilterInput, setSenderFilterInput] = useState("");
   const [statusFilterInput, setStatusFilterInput] = useState("");
+  const [transactionIdFilterInput, setTransactionIdFilterInput] = useState("");
   const [flaggedFilter, setFlaggedFilter] = useState("all");
   const [page, setPage] = useState(1);
 
   const typeFilter = useDebouncedValue(typeFilterInput, 350);
   const senderFilter = useDebouncedValue(senderFilterInput, 350);
   const statusFilter = useDebouncedValue(statusFilterInput, 350);
+  const transactionIdFilter = useDebouncedValue(transactionIdFilterInput, 350);
 
   const role = useAuthStore((state) => state.user?.role);
   const isViewer = role === "viewer";
@@ -171,6 +173,9 @@ export function TransactionsPage() {
     if (statusFilter.trim()) {
       filters.status = statusFilter.trim();
     }
+    if (transactionIdFilter.trim()) {
+      filters.transaction_id = transactionIdFilter.trim();
+    }
     if (flaggedFilter === "true") {
       filters.flagged = true;
     }
@@ -178,7 +183,7 @@ export function TransactionsPage() {
       filters.flagged = false;
     }
     return filters;
-  }, [typeFilter, senderFilter, statusFilter, flaggedFilter]);
+  }, [typeFilter, senderFilter, statusFilter, transactionIdFilter, flaggedFilter]);
 
   const loadTransactions = useCallback(async (targetPage = 1) => {
     setLoading(true);
@@ -418,7 +423,16 @@ export function TransactionsPage() {
           <CardTitle>List and filters</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div className="grid gap-2">
+              <Label htmlFor="transactionIdFilter">Transaction ID</Label>
+              <Input
+                id="transactionIdFilter"
+                value={transactionIdFilterInput}
+                onChange={(event) => setTransactionIdFilterInput(event.target.value)}
+                placeholder="Full or partial UUID..."
+              />
+            </div>
             <div className="grid gap-2">
               <Label htmlFor="typeFilter">Type</Label>
               <Input

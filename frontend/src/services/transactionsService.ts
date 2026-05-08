@@ -37,6 +37,12 @@ const toTransactionFilterParams = (filters?: TransactionFilters): Record<string,
   if (filters.flagged !== undefined) {
     params.flagged = filters.flagged;
   }
+  if (filters.transaction_id) {
+    const normalizedId = filters.transaction_id.trim();
+    if (normalizedId) {
+      params.transaction_id = normalizedId;
+    }
+  }
   return params;
 };
 

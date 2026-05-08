@@ -30,6 +30,7 @@ def get_transactions():
         tx_type=request.args.get("type"),
         tx_status=request.args.get("status"),
         flagged=flagged_value,
+        transaction_id=request.args.get("transaction_id"),
     )
     return api_success(data=data, pagination=pagination)
 

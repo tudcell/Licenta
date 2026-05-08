@@ -87,5 +87,6 @@ export interface TransactionFilters {
   sender?: string;
   status?: string;
   flagged?: boolean;
+  transaction_id?: string;
 }
 

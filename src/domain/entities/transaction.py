@@ -3,7 +3,7 @@
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, Optional
 
@@ -44,7 +44,12 @@ class Transaction:
     transaction_type: TransactionType
     sender_address: str
     data: Dict[str, Any]
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    # Timezone-aware UTC: produces "...+00:00" suffix so JavaScript's
+    # `new Date(iso)` parses it as UTC and `toLocaleString()` converts to
+    # the viewer's local timezone. A naive timestamp would be parsed as
+    # local time by the browser, making the user's own transaction look
+    # like it happened "hours ago".
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     transaction_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     signature: Optional[str] = None
     public_key: Optional[str] = None
