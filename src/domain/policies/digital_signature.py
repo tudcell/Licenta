@@ -6,6 +6,7 @@ Ensures authenticity and non-repudiation of transactions.
 import base64
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -13,6 +14,8 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
+
+logger = logging.getLogger("blockchain_audit")
 
 
 @dataclass
@@ -155,7 +158,7 @@ class DigitalSignature:
         except InvalidSignature:
             return False
         except Exception as e:
-            print(f"Error verifying signature: {e}")
+            logger.warning("Error verifying signature: %s", e)
             return False
 
     @staticmethod
@@ -225,5 +228,5 @@ class DigitalSignature:
             public_key = DigitalSignature.public_key_from_hex(public_key_hex)
             return DigitalSignature.verify(public_key, data, signature)
         except Exception as e:
-            print(f"Error verifying with hex key: {e}")
+            logger.warning("Error verifying with hex key: %s", e)
             return False

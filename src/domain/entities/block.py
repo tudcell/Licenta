@@ -56,14 +56,6 @@ class Block:
                 return iterations
             self.nonce += 1
 
-    # def add_transaction(self, transaction: Transaction) -> bool:
-    # 	if not transaction.verify_signature():
-    # 		return False
-    # 	self.transactions.append(transaction)
-    # 	self._build_merkle_tree()
-    # 	self.block_hash = self.calculate_hash()
-    # 	return True
-
     def get_transaction_proof(self, transaction_id: str) -> Optional[MerkleProof]:
         for tx in self.transactions:
             if tx.transaction_id == transaction_id:
