@@ -96,7 +96,7 @@ export function AlertsPage() {
     setActionError(null);
     try {
       await alertsService.resolve(alertId);
-      await load(pagination?.page ?? 1);
+      await load(pagination?.page ?? 1, { background: true });
     } catch (resolveError) {
       setActionError(normalizeApiError(resolveError).message);
     } finally {
@@ -212,8 +212,8 @@ export function AlertsPage() {
                 total={pagination.total}
                 hasPrevious={pagination.has_prev}
                 hasNext={pagination.has_next}
-                onPrevious={() => void load(pagination.page - 1)}
-                onNext={() => void load(pagination.page + 1)}
+                onPrevious={() => void load(pagination.page - 1, { background: true })}
+                onNext={() => void load(pagination.page + 1, { background: true })}
               />
             ) : null}
           </CardContent>
