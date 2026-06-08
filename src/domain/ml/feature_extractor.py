@@ -263,14 +263,14 @@ class FeatureExtractor:
         sender_amount_sum_last_hour = sender_state.hour_amount_sum
         sender_amount_sum_last_day = sender_state.day_amount_sum
 
-        # Calculăm media zilnică (tranzacții pe oră)
+        # Daily average (transactions per hour)
         daily_avg = sender_tx_count_last_day / 24.0 if sender_tx_count_last_day > 0 else 0.0
 
-        # FIX PENTRU COLD START: Presupunem un minim teoretic (ex. 0.5 acțiuni/oră medie)
-        # pentru a preveni explozia raportului la conturile abia create
+        # Cold-start fix: assume a theoretical floor (about 0.5 actions/hour on
+        # average) to stop the ratio from exploding for freshly created accounts.
         smoothed_daily_avg = max(daily_avg, 0.5)
 
-        # Acum raportul nu va mai sări la 24.0 din greșeală
+        # With the floor in place the ratio no longer jumps to 24.0 by accident.
         activity_spike_ratio = float(sender_tx_count_last_hour / smoothed_daily_avg)
 
         last_tx_time = sender_last_tx_time.get(sender_address)

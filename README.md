@@ -49,7 +49,7 @@ thousands of entries fast enough to spot subtle misuse.
    *and* forging signatures that don't reuse known public keys — both
    detectable cheaply at audit time.
 2. **Automated triage.** An Isolation Forest scores each new event against
-   30+ behavioural features (temporal, amount, sender history, receiver
+   25 behavioural features (temporal, amount, sender history, receiver
    history, risk level). A small **rule layer** with **data-driven weights**
    adds explanatory penalties for known suspicious patterns. Suspicious
    events are surfaced via WebSocket the instant they're submitted.
@@ -190,10 +190,6 @@ under 50 lines per helper.
 licenta_ml_fixed/
 ├── main.py                              # Entry point: dev server + port check
 ├── requirements.txt
-├── test_api.py                          # 35 integration checks
-├── test_architecture_layers.py          # Layer-direction guardrails
-├── test_role_access_control.py          # RBAC behaviour
-├── test_transaction_audit_statistics.py # Audit stats correctness
 ├── README.md                            # ← you are here
 │
 ├── src/
@@ -229,7 +225,7 @@ licenta_ml_fixed/
 │   │   │   └── audit_report.py
 │   │   ├── ml/
 │   │   │   ├── anomaly_detector.py      # IsolationForest + learned weights
-│   │   │   └── feature_extractor.py     # ~30 features, sliding-window state
+│   │   │   └── feature_extractor.py     # 25 features, sliding-window state
 │   │   ├── policies/
 │   │   │   ├── digital_signature.py     # ECDSA + KeyPair.sign(data)
 │   │   │   ├── merkle_tree.py
@@ -272,14 +268,21 @@ licenta_ml_fixed/
 │   │   └── messaging/
 │   │       └── socketio_event_bus.py    # SocketIOEventBus adapter
 │   │
-│   └── utils/
-│       ├── data_generator.py            # Demo traffic
-│       ├── training_data_generator.py   # Synthetic training set
-│       ├── test_factories.py            # TransactionFactory (demo helpers)
-│       ├── pagination.py
-│       ├── password_security.py         # scrypt password hashing
-│       ├── snapshot_manager.py          # ZIP backup/restore
-│       └── reset_blockchain.py
+│   ├── utils/
+│   │   ├── data_generator.py            # Demo traffic
+│   │   ├── training_data_generator.py   # Synthetic training set
+│   │   ├── evaluate_detector.py         # Reproducible detector evaluation (seeded)
+│   │   ├── test_factories.py            # TransactionFactory (demo helpers)
+│   │   ├── pagination.py
+│   │   ├── password_security.py         # scrypt password hashing
+│   │   ├── snapshot_manager.py          # ZIP backup/restore
+│   │   └── reset_blockchain.py
+│   │
+│   └── tests/
+│       ├── test_api.py                          # 35 integration checks (Flask test client)
+│       ├── test_architecture_layers.py          # Layer-direction guardrails
+│       ├── test_role_access_control.py          # RBAC behaviour
+│       └── test_transaction_audit_statistics.py # Audit stats correctness
 │
 ├── frontend/
 │   ├── package.json
@@ -627,9 +630,9 @@ flagged = (final_score < adaptive_threshold)
 
 ### Isolation Forest
 
-- 300 trees, contamination 0.02, SECP256K1-style determinism via fixed
+- 300 trees, contamination 0.02, deterministic via fixed
   `random_state=42`.
-- 30+ feature dimensions per transaction, computed by
+- 25 feature dimensions per transaction, computed by
   `FeatureExtractor`:
   - **Temporal** (cyclical sin/cos for hour and day, weekend, night flags)
   - **Type flags** (auth/data/transfer/admin/failure)
@@ -879,7 +882,7 @@ client-side only.
 ### Unit and architecture tests (pytest)
 
 ```bash
-python -m pytest test_architecture_layers.py test_role_access_control.py test_transaction_audit_statistics.py -q
+python -m pytest src/tests -q
 ```
 
 Covers:
@@ -887,7 +890,7 @@ Covers:
 - **Layer guardrails** — `domain/` cannot import `service/`, `infrastructure/`,
   or `api/`; `service/` cannot import `api/`; `infrastructure/` cannot
   import `service/` or `api/`; `api/routes/` cannot reach into
-  `infrastructure/` directly. These are AST-level grep checks, not
+  `infrastructure/` directly. These are regex import-scan checks, not
   behaviour tests, but they're cheap and have caught real regressions.
 - **RBAC** — viewer cannot create transactions, sees only owned wallets;
   admin/operator can.
@@ -898,13 +901,24 @@ Covers:
 
 ```bash
 rm -rf data/        # or Remove-Item data -Recurse -Force
-python test_api.py
+python -m src.tests.test_api
 ```
 
 35 sequential checks: auth flow, RBAC, pagination, transaction creation,
 filter wiring, transfer-validation defaults, mining, snapshot
 backup/list/restore/download, retention pruning, refresh, logout,
 revocation. Exit 0 = all pass.
+
+### Reproducible detector evaluation
+
+```bash
+python -m src.utils.evaluate_detector
+```
+
+Trains the detector on seeded synthetic traffic, scores a held-out mix of
+200 normal and 50 anomalous events, and prints the confusion matrix plus
+precision, recall and F1. Seeded end-to-end, so the numbers reproduce
+exactly on every run.
 
 ---
 

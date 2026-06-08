@@ -22,15 +22,29 @@ TEST_ANOMALOUS = 50
 
 
 def main() -> None:
-    # Imports happen first (in app order, to avoid the entities<->ml
-    # circular-import edge), and only then do we seed. Seeding after the
-    # imports means no import-time RNG draws can land between the seed and the
-    # data generation, so the result is identical whether the file is run as a
-    # script or as `python -m src.utils.evaluate_detector`.
+    # Imports happen first, in app order, to avoid the entities<->ml
+    # circular-import edge.
     import src.domain.entities.transaction  # noqa: F401
     import src.domain.entities.audit_report  # noqa: F401
     from src.domain.ml.anomaly_detector import AnomalyDetector
     from src.utils.data_generator import DataGenerator
+
+    # Warm up every first-use (lazy) import along the generate -> fit ->
+    # evaluate path BEFORE seeding. Some of these imports are triggered only on
+    # first use and consume a random draw; if one fired between the seed and the
+    # real run it would shift the whole generated sequence by one event and flip
+    # a few labels. Running the path once on throwaway data forces those imports
+    # to resolve up front, which is what makes the reported numbers reproduce
+    # exactly regardless of invocation method or what is already imported.
+    _warm = DataGenerator()
+    _warm_detector = AnomalyDetector()
+    _warm_detector.fit(_warm.generate_normal_transactions(100))
+    _warm_normal = _warm.generate_normal_transactions(5)
+    _warm_anom = _warm.generate_anomalies(2)
+    _warm_detector.evaluate_dataset(
+        _warm_normal + _warm_anom,
+        ["normal"] * len(_warm_normal) + ["anomaly"] * len(_warm_anom),
+    )
 
     random.seed(SEED)
     np.random.seed(SEED)
