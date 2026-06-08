@@ -6,8 +6,8 @@ precision, recall and F1. The run is deterministic: both the standard `random`
 module and NumPy are seeded, and the Isolation Forest itself uses a fixed
 random_state. Re-running this script reproduces the reported numbers exactly.
 
-Usage:
-    python evaluate_detector.py
+Usage (from the repository root):
+    python -m src.utils.evaluate_detector
 """
 
 from __future__ import annotations
@@ -22,14 +22,18 @@ TEST_ANOMALOUS = 50
 
 
 def main() -> None:
-    random.seed(SEED)
-    np.random.seed(SEED)
-
-    # Imported in app order to avoid the entities<->ml circular-import edge.
+    # Imports happen first (in app order, to avoid the entities<->ml
+    # circular-import edge), and only then do we seed. Seeding after the
+    # imports means no import-time RNG draws can land between the seed and the
+    # data generation, so the result is identical whether the file is run as a
+    # script or as `python -m src.utils.evaluate_detector`.
     import src.domain.entities.transaction  # noqa: F401
     import src.domain.entities.audit_report  # noqa: F401
     from src.domain.ml.anomaly_detector import AnomalyDetector
     from src.utils.data_generator import DataGenerator
+
+    random.seed(SEED)
+    np.random.seed(SEED)
 
     gen = DataGenerator()
 
@@ -54,10 +58,12 @@ def main() -> None:
     print(f"test normal          = {len(test_normal)}")
     print(f"test anomalous       = {len(test_anomalous)}")
     print("-" * 40)
-    print(f"true positives  (TP) = {tp} / {TEST_ANOMALOUS}")
-    print(f"false negatives (FN) = {fn} / {TEST_ANOMALOUS}")
-    print(f"false positives (FP) = {fp} / {TEST_NORMAL}")
-    print(f"true negatives  (TN) = {tn} / {TEST_NORMAL}")
+    n_anom = len(test_anomalous)
+    n_norm = len(test_normal)
+    print(f"true positives  (TP) = {tp} / {n_anom}")
+    print(f"false negatives (FN) = {fn} / {n_anom}")
+    print(f"false positives (FP) = {fp} / {n_norm}")
+    print(f"true negatives  (TN) = {tn} / {n_norm}")
     print("-" * 40)
     print(f"precision            = {metrics['precision']:.3f}")
     print(f"recall               = {metrics['recall']:.3f}")
