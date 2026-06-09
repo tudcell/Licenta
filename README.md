@@ -916,9 +916,10 @@ python -m src.utils.evaluate_detector
 ```
 
 Trains the detector on seeded synthetic traffic, scores a held-out mix of
-200 normal and 50 anomalous events, and prints the confusion matrix plus
-precision, recall and F1. Seeded end-to-end, so the numbers reproduce
-exactly on every run.
+~200 normal and 50 anomalous events, and prints the confusion matrix plus
+precision, recall and F1. The RNGs are seeded, the Isolation Forest uses a
+fixed `random_state`, and the generator's clock is pinned to a fixed instant,
+so the numbers reproduce exactly on every run and every machine.
 
 ---
 
